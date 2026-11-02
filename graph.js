@@ -72,6 +72,11 @@ function layout(nodes, edges) {
   return { pos, orphans };
 }
 
+// Two scenes closer than a row's gap, one above the other, or overlapping.
+function touching(a, b) {
+  return a.x < b.x + NODE_W && b.x < a.x + NODE_W && a.y < b.y + b.h + ROW_GAP && b.y < a.y + a.h + ROW_GAP;
+}
+
 export class Graph {
   constructor(svg, { onSelect, moved, onMoved }) {
     this.svg = svg;
@@ -93,9 +98,33 @@ export class Graph {
 
   setResult(result) {
     const before = this.result ? this.result.knots.length : 0;
+    this.keepPlaceOnRename(result);
     this.result = result;
     this.draw();
     if (!this.hasFit || before === 0) this.fit();
+  }
+
+  // A rename reads as one scene gone and one new. The script is scanned as it's typed,
+  // so the old name can go a scan or more before the new one comes (=== ===).
+  keepPlaceOnRename(result) {
+    const names = new Set(result.knots.map(k => k.name));
+    const old = this.names;
+    this.names = names;
+    if (!old) return;
+    const gone = [...old].filter(n => !names.has(n));
+    const added = [...names].filter(n => !old.has(n));
+    if (gone.length > 1 || added.length > 1) { this.vanished = null; return; }
+    if (!added.length) {
+      if (gone.length) this.vanished = gone[0];
+      return;
+    }
+    const from = gone[0] ?? this.vanished;
+    this.vanished = null;
+    if (from && this.moved.has(from) && !this.moved.has(added[0])) {
+      this.moved.set(added[0], this.moved.get(from));
+      this.moved.delete(from);
+      this.onMoved(Object.fromEntries(this.moved));
+    }
   }
 
   setCurrent(name) { this.current = name; this.draw(); }
@@ -128,6 +157,16 @@ export class Graph {
     for (const [name, p] of pos) {
       const m = this.moved.get(name);
       if (m) { p.x = m.x; p.y = m.y; }
+    }
+    // Automatic scenes step down out of the way of moved ones, except the one being
+    // dragged: nothing else shifts until it's dropped.
+    const placed = [...this.moved.keys()].filter(n => pos.has(n) && n !== this.dragging).map(n => pos.get(n));
+    if (placed.length) {
+      for (const [name, p] of pos) {
+        if (this.moved.has(name)) continue;
+        for (let hit; (hit = placed.find(q => touching(p, q)));) p.y = hit.y + hit.h + ROW_GAP;
+        placed.push(p);
+      }
     }
     this.pos = pos;
 
@@ -245,7 +284,11 @@ export class Graph {
     let downNode = null;
     let drag = null; // { name, node, pointer }: where the scene and the pointer began
     const endDrag = () => {
-      if (drag && this.moved.has(drag.name)) this.onMoved(Object.fromEntries(this.moved));
+      if (this.dragging) {
+        this.dragging = null;
+        this.onMoved(Object.fromEntries(this.moved));
+        this.draw();
+      }
       drag = null;
     };
 
@@ -269,6 +312,7 @@ export class Graph {
         moved += Math.abs(now.x - prev.x) + Math.abs(now.y - prev.y);
         if (drag) {
           if (moved < 8) return; // still a tap: it hasn't left its place
+          this.dragging = drag.name;
           this.moved.set(drag.name, {
             x: Math.round(drag.node.x + (now.x - drag.pointer.x) / this.view.k),
             y: Math.round(drag.node.y + (now.y - drag.pointer.y) / this.view.k),

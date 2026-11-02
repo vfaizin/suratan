@@ -1,7 +1,7 @@
 // Makes dividing by zero an Ink error. Left alone, inkjs shows the player "Infinity"
 // for 1 / 0, and crashes with no useful message on 0 / 0 and on mod 0.
-// Loaded after vendor/ink-full.js, by the page and by the bot alike, so the vendored
-// file stays as published. This is the tool's rule: the game's own Ink won't have it.
+// Loaded after vendor/ink-full.js, by the page and by the bot alike. This is the tool's
+// rule: the game's own Ink won't have it.
 {
   const perform = inkjs.Story.prototype.PerformLogicAndFlowControl;
   inkjs.Story.prototype.PerformLogicAndFlowControl = function (obj) {

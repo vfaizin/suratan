@@ -374,14 +374,26 @@ const player = {
   },
 };
 
+// What Ink calls these, in the words the script uses.
+const INK_OPERATOR = { _: "a minus sign", "!": "not", "&&": "and", "||": "or", "%": "mod" };
+const INK_TYPE = { String: "text", Int: "a whole number", Float: "a decimal", List: "a list", DivertTarget: "a scene" };
+
 function humanError(message) {
-  if (/ran out of content/.test(message)) {
+  // Ink's place in its compiled story means nothing here. The scene is named separately.
+  const text = message.replace(/^RUNTIME ERROR: \(Ink Pointer [^)]*\): /, "");
+  if (/ran out of content/.test(text)) {
     return "Dead end: the story runs out here, with no jump, choice or -> END.";
   }
-  if (/Divide by zero/.test(message)) { // from ink-guard.js
+  if (/Divide by zero/.test(text)) { // from ink-guard.js
     return "Divide by zero: a sum here divides by 0, or takes mod 0.";
   }
-  return message;
+  let m = text.match(/^Cannot perform operation (\S+) on (\w+)/);
+  if (m) return `Can't use ${INK_OPERATOR[m[1]] || m[1]} on ${INK_TYPE[m[2]] || m[2]}. Check what the variables in this line hold.`;
+  m = text.match(/^Tried to divert to a target from a variable, but the variable \((.+?)\) didn't contain a divert target, it contained '(.*)'/s);
+  if (m) return `-> ${m[1]} can't go anywhere: ${m[1]} should hold a scene, but it holds ${m[2]}.`;
+  if (/on a void value/.test(text)) return "A sum here uses a function that gives back nothing. Does the function need ~ return?";
+  if (/^Found tunnel onwards statement/.test(text)) return "->-> here has nothing to go back to. Reach this scene with -> scene ->, or end it with -> END.";
+  return text;
 }
 
 // An error Ink doesn't handle itself: its words are about its own code, not the story,
@@ -436,7 +448,13 @@ function showState(s) {
       else { input.className = "text"; input.value = value; }
       input.onchange = () => {
         const next = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
-        try { player.story?.variablesState.$(name, next); } catch (e) { addLine(sysLine(e.message, "fail")); }
+        try {
+          const vars = player.story?.variablesState;
+          const now = vars?.GetVariableWithName(name);
+          // Ink takes any whole number as an int, but a decimal variable stays a decimal.
+          if (Number.isInteger(next) && typeof now?.value === "number") vars.SetGlobal(name, new now.constructor(next));
+          else vars?.$(name, next);
+        } catch (e) { addLine(sysLine(e.message, "fail")); }
       };
       label.append(input);
     } else {

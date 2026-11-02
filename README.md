@@ -20,7 +20,7 @@ api.github.com.
 - `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
 - `github.js`: reads and writes the story's folder through GitHub's API
 - `sw.js`: keeps the tool working offline
-- `vendor/ink-full.js`: [inkjs](https://github.com/y-lohse/inkjs) 2.4.0, the Ink compiler and runtime (MIT)
+- `vendor/ink-full.js`: [inkjs](https://github.com/y-lohse/inkjs) 2.4.0, the Ink compiler and runtime (MIT). One change from the published file: `WriteFloat` writes a whole-number decimal as `"7.0f"` and the reader takes a minus sign on it, so `7.0` stays a decimal through the JSON Suratan runs from, instead of becoming the whole number `7`, which divides differently
 
 No build step. To run it locally, serve this folder with any static server.
 
