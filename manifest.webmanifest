@@ -1,0 +1,14 @@
+{
+  "name": "Suratan",
+  "short_name": "Suratan",
+  "description": "Write Ink stories, see their graph, play them and check them.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f2ea",
+  "theme_color": "#f6f2ea",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

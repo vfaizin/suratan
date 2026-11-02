@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Suratan</title>
+<meta name="description" content="Write Ink stories, see their graph, play them and check them.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Suratan">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f6f2ea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17181c" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <strong class="brand">Suratan</strong>
+  <select id="file-select" aria-label="File"></select>
+  <button id="new-file" class="quiet" title="New file" aria-label="New file">+</button>
+  <span class="grow"></span>
+  <span id="sync-state" class="sync-state" role="status"></span>
+  <button id="sync">Sync</button>
+  <button id="settings" class="quiet" aria-label="Settings" title="Settings">⚙︎</button>
+</header>
+
+<main id="panes">
+  <section class="pane" data-pane="script" aria-label="Script">
+    <div class="editor">
+      <div id="backdrop" class="backdrop" aria-hidden="true"></div>
+      <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Ink script"></textarea>
+    </div>
+    <ul id="issues" class="issues"></ul>
+  </section>
+
+  <section class="pane" data-pane="graph" aria-label="Graph">
+    <div class="bar">
+      <button id="graph-fit">Fit</button>
+      <label class="check"><input type="checkbox" id="graph-hubs" checked> Collapse hubs</label>
+      <label class="check"><input type="checkbox" id="graph-labels" checked> Labels</label>
+      <span class="grow"></span>
+      <span id="graph-count" class="muted"></span>
+    </div>
+    <svg id="graph" role="img" aria-label="Scenes and the jumps between them"></svg>
+    <div id="graph-card" class="card" hidden></div>
+  </section>
+
+  <section class="pane" data-pane="play" aria-label="Play">
+    <div class="bar">
+      <button id="play-restart">Restart</button>
+      <button id="play-back">Back</button>
+      <select id="play-from" aria-label="Play from scene"></select>
+      <span class="grow"></span>
+      <span id="play-stale" class="stale" hidden>Script changed</span>
+    </div>
+    <div id="play-state" class="state"></div>
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+    <div id="choices" class="choices"></div>
+  </section>
+
+  <section class="pane" data-pane="check" aria-label="Check">
+    <div class="bar">
+      <button id="check-run" class="primary">Run the bot</button>
+      <label class="check">Runs <input id="check-runs" type="number" inputmode="numeric" min="10" max="100000" value="1000"></label>
+      <label class="check">Choices a run <input id="check-steps" type="number" inputmode="numeric" min="5" max="5000" value="200"></label>
+    </div>
+    <div id="check-out" class="check-out">
+      <p class="muted">The bot plays the story at random, many times, and lists what it never reached and where the story broke.</p>
+    </div>
+  </section>
+</main>
+
+<nav id="tabs" class="tabs" aria-label="Panes">
+  <button data-tab="script">Script</button>
+  <button data-tab="graph">Graph</button>
+  <button data-tab="play">Play</button>
+  <button data-tab="check">Check</button>
+</nav>
+
+<dialog id="settings-dialog">
+  <form method="dialog" id="settings-form">
+    <h2>GitHub sync</h2>
+    <p class="muted">Your stories stay in your own repository. The token stays on this device and is only ever sent to api.github.com.</p>
+    <label>Repository <input id="gh-repo" placeholder="owner/name" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label>Branch <input id="gh-branch" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label>Folder <input id="gh-dir" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label>Token <input id="gh-token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <p class="muted">Make a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: only the story's repository, with Contents set to read and write.</p>
+    <p id="gh-message" class="message" role="status"></p>
+    <div class="row">
+      <button type="button" id="gh-forget" class="quiet">Forget token</button>
+      <span class="grow"></span>
+      <button type="button" id="gh-close" class="quiet">Close</button>
+      <button type="button" id="gh-save" class="primary">Save and sync</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="conflict-dialog">
+  <h2 id="conflict-title"></h2>
+  <p>This file changed on GitHub and on this device since the last sync.</p>
+  <div class="row wrap">
+    <button id="conflict-mine">Keep this device's</button>
+    <button id="conflict-theirs">Use GitHub's, and keep mine as a copy</button>
+    <button id="conflict-skip" class="quiet">Decide later</button>
+  </div>
+  <p class="muted">Keeping this device's overwrites GitHub's, which stays in the repository's history.</p>
+</dialog>
+
+<script src="vendor/ink-full.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
