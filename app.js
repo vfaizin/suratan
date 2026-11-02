@@ -259,6 +259,21 @@ const player = {
   history: [],
   from: null,
 
+  // A new story from what this play began with, even if the script has changed since.
+  fresh() {
+    const s = new inkjs.Story(this.json);
+    s.onError = (message, type) => {
+      if (type === 2) this.errors.push(humanError(message));
+    };
+    for (const name of this.externals) {
+      s.BindExternalFunctionGeneral(name, args => {
+        addLine(sysLine(`The game would call ${name}(${args.join(", ")}). Here it just succeeds.`));
+        return 1;
+      }, false);
+    }
+    return s;
+  },
+
   // path: a scene to begin at. replay: { seed, choices } from the bot.
   start(path = null, replay = null) {
     if (!compiled.json) {
@@ -268,7 +283,9 @@ const player = {
       return;
     }
     this.from = path;
-    const s = new inkjs.Story(compiled.json);
+    this.json = compiled.json;
+    this.externals = compiled.scan.externals;
+    const s = this.fresh();
     this.story = s;
     this.history = [];
     $("play-stale").hidden = true;
@@ -276,15 +293,6 @@ const player = {
     $("choices").replaceChildren();
     // Held back to the end of the line, so it reads after the words that led to it.
     this.errors = [];
-    s.onError = (message, type) => {
-      if (type === 2) this.errors.push(humanError(message));
-    };
-    for (const name of compiled.scan.externals) {
-      s.BindExternalFunctionGeneral(name, args => {
-        addLine(sysLine(`The game would call ${name}(${args.join(", ")}). Here it just succeeds.`));
-        return 1;
-      }, false);
-    }
     if (replay) {
       s.state.storySeed = replay.seed;
       s.state.previousRandom = 0;
@@ -356,6 +364,9 @@ const player = {
   back() {
     const h = this.history.pop();
     if (!h || !this.story) return;
+    // An error Ink doesn't handle itself leaves it mid-line, and the next line would
+    // then begin with the old words still in it.
+    if (!this.story.asyncContinueComplete) this.story = this.fresh();
     this.story.state.LoadJson(h.state);
     const t = $("transcript");
     while (t.childElementCount > h.lines) t.lastElementChild.remove();

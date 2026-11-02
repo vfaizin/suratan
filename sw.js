@@ -1,6 +1,6 @@
 // Keeps the tool working offline. Own files only: GitHub's API is never cached.
 // Serves the saved copy at once and fetches a fresher one for next time.
-const CACHE = "suratan-2";
+const CACHE = "suratan-3";
 const FILES = [
   "./", "index.html", "style.css", "app.js", "parse.js", "graph.js", "github.js", "sample.js",
   "check-worker.js", "vendor/ink-full.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png",

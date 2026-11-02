@@ -128,8 +128,9 @@ onmessage = ({ data }) => {
       }
     }
 
-    // A story stopped mid-line can't be reset, so the next run needs a new one.
-    if (outcome === "stuck") story = fresh();
+    // A story stopped mid-line can't be reset, so the next run needs a new one. A loop
+    // stops it there, and so does an error Ink doesn't handle itself, such as 1 mod 0.
+    if (!story.asyncContinueComplete) story = fresh();
 
     if (outcome === "stuck" && [...problems.values()].some(p => p.kind === "stuck" && p.count >= 3)) {
       stoppedEarly = true;
