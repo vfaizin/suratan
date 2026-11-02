@@ -194,6 +194,8 @@ $("new-file").onclick = () => {
 /* ---------- Graph pane ---------- */
 
 const graph = new Graph($("graph"), {
+  moved: loadJson("suratan:graph-moved", {}),
+  onMoved(moved) { saveJson("suratan:graph-moved", moved); },
   onSelect(name) {
     graph.setSelected(name);
     const card = $("graph-card");
@@ -243,6 +245,10 @@ const graph = new Graph($("graph"), {
 });
 
 $("graph-fit").onclick = () => graph.fit();
+$("graph-tidy").onclick = () => {
+  if (graph.moved.size && !confirm("Put every scene you moved back in its automatic place?")) return;
+  graph.tidy();
+};
 $("graph-hubs").onchange = e => { graph.collapseHubs = e.target.checked; graph.draw(); };
 $("graph-labels").onchange = e => { graph.showLabels = e.target.checked; graph.draw(); };
 

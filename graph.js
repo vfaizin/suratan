@@ -1,5 +1,6 @@
 // Draws the scan as columns of scenes, by how many jumps each is from the start.
 // Coordinates are graph units; the view transform (pan, zoom) sits on one <g>.
+// A scene dragged by hand keeps its place, by name, over the columns.
 
 import { ROOT } from "./parse.js";
 
@@ -72,9 +73,11 @@ function layout(nodes, edges) {
 }
 
 export class Graph {
-  constructor(svg, { onSelect }) {
+  constructor(svg, { onSelect, moved, onMoved }) {
     this.svg = svg;
     this.onSelect = onSelect;
+    this.onMoved = onMoved;
+    this.moved = new Map(Object.entries(moved)); // name -> { x, y } in graph units
     this.view = { x: 20, y: 20, k: 1 };
     this.collapseHubs = true;
     this.showLabels = true;
@@ -122,6 +125,11 @@ export class Graph {
     }
     const edges = [...pairs.values()];
     const { pos, orphans } = layout(nodes, edges);
+    for (const [name, p] of pos) {
+      const m = this.moved.get(name);
+      if (m) { p.x = m.x; p.y = m.y; }
+    }
+    this.pos = pos;
 
     const inCount = new Map();
     for (const e of edges) inCount.set(e.to, (inCount.get(e.to) || 0) + 1);
@@ -131,10 +139,24 @@ export class Graph {
     for (const e of edges) {
       if (this.collapseHubs && hubs.has(e.to)) continue; // the hub's badge counts them
       const a = pos.get(e.from), b = pos.get(e.to);
-      const back = b.col <= a.col;
-      let d;
-      if (back) {
-        const lift = 46 + 18 * Math.abs(a.col - b.col);
+      // By where they sit, not their columns: a moved scene can be anywhere.
+      const back = b.x < a.x + NODE_W;
+      // One moved above the other: bottom to top, each direction to its own side.
+      const stacked = (this.moved.has(e.from) || this.moved.has(e.to))
+        && Math.abs(a.x - b.x) < NODE_W && (b.y >= a.y + a.h || b.y + b.h <= a.y);
+      let d, labelX = (a.x + NODE_W + b.x) / 2, labelY = (a.y + a.h / 2 + b.y + b.h / 2) / 2 - 3, labelAnchor = "middle";
+      if (stacked) {
+        const down = b.y > a.y;
+        const side = down ? 14 : -14;
+        const x0 = a.x + NODE_W / 2 + side, y0 = down ? a.y + a.h : a.y;
+        const x1 = b.x + NODE_W / 2 + side, y1 = down ? b.y - 1 : b.y + b.h + 1;
+        const mid = (y0 + y1) / 2;
+        d = `M${x0} ${y0} C${x0} ${mid}, ${x1} ${mid}, ${x1} ${y1}`;
+        labelX = (x0 + x1) / 2 + (down ? 4 : -4);
+        labelY = mid;
+        labelAnchor = down ? "start" : "end"; // outward, so a pair's labels don't overlap
+      } else if (back) {
+        const lift = 46 + 18 * Math.abs(a.x - b.x) / (NODE_W + COL_GAP);
         const y0 = a.y, y1 = b.y;
         d = `M${a.x + NODE_W / 2} ${y0} C${a.x + NODE_W / 2} ${y0 - lift}, ${b.x + NODE_W / 2} ${y1 - lift}, ${b.x + NODE_W / 2} ${y1 - 1}`;
       } else {
@@ -142,10 +164,11 @@ export class Graph {
         const mid = (x0 + x1) / 2;
         d = `M${x0} ${y0} C${mid} ${y0}, ${mid} ${y1}, ${x1} ${y1}`;
       }
-      const path = el("path", { d, class: `edge${e.conditional ? " cond" : ""}${back ? " back" : ""}`, "marker-end": "url(#arrow)" }, edgeLayer);
+      const arc = back && !stacked;
+      const path = el("path", { d, class: `edge${e.conditional ? " cond" : ""}${arc ? " back" : ""}`, "marker-end": "url(#arrow)" }, edgeLayer);
       if (e.labels.length) el("title", {}, path).textContent = e.labels.join(" / ");
-      if (this.showLabels && e.labels.length && !back) {
-        const t = el("text", { x: a.x + NODE_W + COL_GAP / 2, y: (a.y + a.h / 2 + b.y + b.h / 2) / 2 - 3, "text-anchor": "middle", class: "edge-label" }, edgeLayer);
+      if (this.showLabels && e.labels.length && !arc) {
+        const t = el("text", { x: labelX, y: labelY, "text-anchor": labelAnchor, class: "edge-label" }, edgeLayer);
         const s = e.labels[0] + (e.labels.length > 1 ? ` +${e.labels.length - 1}` : "");
         t.textContent = s.length > 20 ? s.slice(0, 19) + "…" : s;
       }
@@ -193,6 +216,14 @@ export class Graph {
     this.apply();
   }
 
+  // Every scene back in its column.
+  tidy() {
+    this.moved.clear();
+    this.onMoved(Object.fromEntries(this.moved));
+    this.draw();
+    this.fit();
+  }
+
   apply() {
     if (this.layer) this.layer.setAttribute("transform", `translate(${this.view.x} ${this.view.y}) scale(${this.view.k})`);
   }
@@ -212,13 +243,22 @@ export class Graph {
     let moved = 0;
     let pinch = null;
     let downNode = null;
+    let drag = null; // { name, node, pointer }: where the scene and the pointer began
+    const endDrag = () => {
+      if (drag && this.moved.has(drag.name)) this.onMoved(Object.fromEntries(this.moved));
+      drag = null;
+    };
 
     svg.addEventListener("pointerdown", e => {
       svg.setPointerCapture(e.pointerId);
-      this.pointers.set(e.pointerId, local(e));
+      const now = local(e);
+      this.pointers.set(e.pointerId, now);
       moved = 0;
       downNode = e.target.closest?.(".node")?.dataset.name ?? null;
       pinch = null;
+      endDrag(); // a second finger makes it a pinch
+      const p = this.pos?.get(downNode);
+      if (p && this.pointers.size === 1) drag = { name: downNode, node: { x: p.x, y: p.y }, pointer: now };
     });
     svg.addEventListener("pointermove", e => {
       if (!this.pointers.has(e.pointerId)) return;
@@ -226,10 +266,19 @@ export class Graph {
       const now = local(e);
       this.pointers.set(e.pointerId, now);
       if (this.pointers.size === 1) {
-        this.view.x += now.x - prev.x;
-        this.view.y += now.y - prev.y;
         moved += Math.abs(now.x - prev.x) + Math.abs(now.y - prev.y);
-        this.apply();
+        if (drag) {
+          if (moved < 8) return; // still a tap: it hasn't left its place
+          this.moved.set(drag.name, {
+            x: Math.round(drag.node.x + (now.x - drag.pointer.x) / this.view.k),
+            y: Math.round(drag.node.y + (now.y - drag.pointer.y) / this.view.k),
+          });
+          this.draw();
+        } else {
+          this.view.x += now.x - prev.x;
+          this.view.y += now.y - prev.y;
+          this.apply();
+        }
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
         const dist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -246,6 +295,7 @@ export class Graph {
     const up = e => {
       if (!this.pointers.has(e.pointerId)) return;
       this.pointers.delete(e.pointerId);
+      endDrag();
       if (this.pointers.size < 2) pinch = null;
       if (this.pointers.size === 0 && moved < 8 && e.type === "pointerup") this.onSelect(downNode);
     };

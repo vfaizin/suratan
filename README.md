@@ -15,7 +15,7 @@ api.github.com.
 ## Files
 - `app.js`: the project, and the script, play, check and sync panes
 - `parse.js`: a light scan of the source for scenes, jumps and variables
-- `graph.js`: draws the scan; pan and pinch
+- `graph.js`: draws the scan; pan, pinch and drag a scene (its place stays on this device, not in the story)
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
 - `github.js`: reads and writes the story's folder through GitHub's API
 - `sw.js`: keeps the tool working offline
