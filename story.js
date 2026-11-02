@@ -1,29 +1,45 @@
-// The Story tab: the whole six months at a glance, threads down and weeks across, kept
-// in story.ink as Ink comments. A month counts as four weeks here: this board is for
-// roughly when, and Plan is for the day and the hour. So a card's time is a number of
-// weeks from the start of December, and `end` is the first week after it.
+// The Story tab: the whole story at a glance, threads down and weeks across, kept in
+// story.ink as Ink comments. A month counts as four weeks here: this board is for roughly
+// when, and Plan is for the day and the hour. So a card's time is a number of weeks from
+// the start of December 2007, and `end` is the first week after it.
 
 import { Timeline, cleanWords, cleanRow, el } from "./timeline.js";
 import { checkTitle, noteFile } from "./notes.js";
 
 export const STORY = "story.ink";
 
-const MONTHS = ["dec", "jan", "feb", "mar", "apr", "may", "jun"];
-const MONTH_LABELS = ["Dec 2007", "Jan 2008", "Feb", "Mar", "Apr", "May", "Jun"];
+const NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const FIRST_YEAR = 2007;
+const FIRST_MONTH = 11; // December
+const MONTH_COUNT = 33; // to August 2010, the college intake
+const yearOf = i => FIRST_YEAR + Math.floor((FIRST_MONTH + i) / 12);
+const nameOf = i => NAMES[(FIRST_MONTH + i) % 12];
+const capital = word => word[0].toUpperCase() + word.slice(1);
+const MONTHS = Array.from({ length: MONTH_COUNT }, (_, i) => `${nameOf(i)}${String(yearOf(i)).slice(2)}`);
+const labelOfMonth = i => `${capital(nameOf(i))} ${yearOf(i)}`;
+// The board's ticks name the year only where it starts.
+const MONTH_LABELS = MONTHS.map((_, i) => (i === 0 || nameOf(i) === "jan" ? labelOfMonth(i) : capital(nameOf(i))));
+// The first board ran December to June with no year in its names. Files from then still read.
+const OLD_NAMES = ["dec", "jan", "feb", "mar", "apr", "may", "jun"];
+const monthIndex = name => {
+  const lower = name.toLowerCase();
+  const old = OLD_NAMES.indexOf(lower);
+  return old >= 0 ? old : MONTHS.indexOf(lower);
+};
 const WEEKS_A_MONTH = 4;
 const WEEKS = MONTHS.length * WEEKS_A_MONTH;
 const WEEK_WIDTH = 46; // CSS pixels
-const MAX_DAY = 366;
+const MAX_DAY = 1000; // the story runs about 960 days
 
 // A new file starts from what's already settled (the skeleton's dates). They're lines of
 // the file, so they can be changed or removed by hand.
 const NEW_FILE = `// The whole story. The Story tab reads and writes this file; Ink ignores it.
-// A month is four weeks here, so "dec 3" is December's third week.
-// mark mar | results
-// mark may-jun | intake letter
+// A month is four weeks here, so "jan08 3" is January 2008's third week.
+// mark mar08 | results
+// mark may08-jun08 | intake letter
 `;
 
-const MONTH = `(${MONTHS.join("|")})`;
+const MONTH = `(${[...MONTHS, ...OLD_NAMES].join("|")})`;
 const THREADS = /^\/\/\s*threads:(.*)$/i;
 const CARD = new RegExp(`^//\\s*${MONTH}\\b.*\\|`, "i");
 const WHEN = new RegExp(`^${MONTH}\\s+([1-4])(?:\\s*-\\s*${MONTH}\\s+([1-4]))?$`, "i");
@@ -32,9 +48,8 @@ const MARK_LIKE = /^\/\/\s*mark\b/i;
 const NOTE_LINK = /^note:\s*(.+)$/i;
 const DAY_LINK = /^day:\s*(\d+)$/i;
 
-const weekOf = (month, week) => MONTHS.indexOf(month.toLowerCase()) * WEEKS_A_MONTH + (+week - 1);
+const weekOf = (month, week) => monthIndex(month) * WEEKS_A_MONTH + (+week - 1);
 const nameOfWeek = w => `${MONTHS[Math.floor(w / WEEKS_A_MONTH)]} ${w % WEEKS_A_MONTH + 1}`;
-const labelOfMonth = i => MONTHS[i][0].toUpperCase() + MONTHS[i].slice(1);
 
 function parseCard(line) {
   const parts = line.replace(/^\/\/\s*/, "").split("|").map(p => p.trim());
@@ -82,8 +97,8 @@ export function parseStory(text) {
       plan.lines.push({ threads: true });
     } else if (MARK_LIKE.test(line)) {
       const m = line.match(MARK);
-      const first = m && MONTHS.indexOf(m[1].toLowerCase());
-      const last = m && MONTHS.indexOf((m[2] ?? m[1]).toLowerCase());
+      const first = m && monthIndex(m[1]);
+      const last = m && monthIndex(m[2] ?? m[1]);
       if (m && first <= last) plan.marks.push({ start: first * WEEKS_A_MONTH, end: (last + 1) * WEEKS_A_MONTH, label: m[3].trim() });
       else unread();
       plan.lines.push({ raw });
@@ -115,7 +130,7 @@ export function storyText(plan) {
 
 function fillWhen(monthId, weekId, week) {
   const $ = id => document.getElementById(id);
-  $(monthId).replaceChildren(...MONTHS.map((m, i) => new Option(MONTH_LABELS[i], i)));
+  $(monthId).replaceChildren(...MONTHS.map((m, i) => new Option(labelOfMonth(i), i)));
   $(weekId).replaceChildren(...[1, 2, 3, 4].map(w => new Option(`Week ${w}`, w - 1)));
   $(monthId).value = Math.floor(week / WEEKS_A_MONTH);
   $(weekId).value = week % WEEKS_A_MONTH;
@@ -214,7 +229,7 @@ export class Story extends Timeline {
       if (m !== month) {
         month = m;
         const marks = this.plan.marks.filter(k => k.start <= m * WEEKS_A_MONTH && m * WEEKS_A_MONTH < k.end).map(k => k.label);
-        parts.push(el("h3", "", MONTH_LABELS[m] + (marks.length ? ` · ${marks.join(", ")}` : "")));
+        parts.push(el("h3", "", labelOfMonth(m) + (marks.length ? ` · ${marks.join(", ")}` : "")));
       }
       const row = el("button", `outline-card${this.noteMissing(c) ? " missing" : ""}`);
       row.append(el("span", "outline-words", this.cardWords(c)));

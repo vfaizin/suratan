@@ -15,7 +15,7 @@ const HOURS = /^(\d{1,2})(?::(\d\d))?\s*-\s*(\d{1,2})(?::(\d\d))?$/;
 const LINK = /\s*->\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*$/;
 export const SCENE_NAME = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$/;
 
-const MAX_DAY = 366;
+const MAX_DAY = 1000; // the story runs about 960 days
 const FIRST_HOUR = 6; // the board starts here unless a card starts earlier
 const HOUR_WIDTH = 72; // CSS pixels
 const STEP = 0.5; // hours: what a drag snaps to

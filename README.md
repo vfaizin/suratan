@@ -18,7 +18,7 @@ api.github.com.
 - `graph.js`: draws the scan; pan, pinch, find, focus on a scene, and drag one (its place stays on this device, not in the story)
 - `timeline.js`: what the Story and Plan boards share: rows, time across, cards, dragging, undo
 - `plan.js`: the Plan tab: `plan.ink`, one day's board, places down and hours across
-- `story.js`: the Story tab: `story.ink`, the whole six months, threads down and weeks across, as a board or an outline
+- `story.js`: the Story tab: `story.ink`, the whole story from December 2007 to August 2010, threads down and weeks across, as a board or an outline
 - `notes.js`: the Notes tab: pages of plain thinking, one Markdown file each, in `notes/` inside the story's folder
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
 - `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
@@ -44,13 +44,13 @@ The game reads the same `.ink` files later.
 // day 1 | 14-16:30 | Study | once | the drawer
 ```
 
-`story.ink` is the same kind of file for the Story tab. A month counts as four weeks, so `dec 3` is December's third week:
+`story.ink` is the same kind of file for the Story tab. A month counts as four weeks, so `jan08 3` is January 2008's third week. The older names with no year (`dec` to `jun`) still read as December 2007 to June 2008:
 
 ```
 // threads: The father, The journal
-// mark mar | results
-// mark may-jun | intake letter
-// dec 3 - jan 2 | The father | the quiet house | note: The father | day: 1
+// mark mar08 | results
+// mark may08-jun08 | intake letter
+// dec07 3 - jan08 2 | The father | the quiet house | note: The father | day: 1
 ```
 
 In `plan.ink`, each card is days, hours, place, `once` (a moment he can miss) or `open` (a window), then its words. `-> name` links a scene; without it the card isn't written yet. Other comments are left where they are.
