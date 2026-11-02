@@ -17,6 +17,7 @@ api.github.com.
 - `parse.js`: a light scan of the source for scenes, jumps and variables
 - `graph.js`: draws the scan; pan, pinch and drag a scene (its place stays on this device, not in the story)
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
+- `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
 - `github.js`: reads and writes the story's folder through GitHub's API
 - `sw.js`: keeps the tool working offline
 - `vendor/ink-full.js`: [inkjs](https://github.com/y-lohse/inkjs) 2.4.0, the Ink compiler and runtime (MIT)

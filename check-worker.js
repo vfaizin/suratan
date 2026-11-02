@@ -1,6 +1,6 @@
 // The bot, in a worker so a story that loops forever cannot freeze the page.
 // Plays seeded random runs. A seed plus its list of choices replays a run exactly.
-importScripts("vendor/ink-full.js");
+importScripts("vendor/ink-full.js", "ink-guard.js");
 
 const STUCK_MS = 2000; // a line taking this long is a loop with no choices, not a slow machine
 const TOTAL_MS = 45000;
@@ -137,7 +137,7 @@ onmessage = ({ data }) => {
     }
 
     // A story stopped mid-line can't be reset, so the next run needs a new one. A loop
-    // stops it there, and so does a crash, such as 1 mod 0.
+    // stops it there, and so does a crash, such as ->-> to a number.
     if (!story.asyncContinueComplete) story = fresh();
 
     if (outcome === "stuck" && [...problems.values()].some(p => p.kind === "stuck" && p.count >= 3)) {

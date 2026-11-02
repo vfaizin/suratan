@@ -378,13 +378,16 @@ function humanError(message) {
   if (/ran out of content/.test(message)) {
     return "Dead end: the story runs out here, with no jump, choice or -> END.";
   }
+  if (/Divide by zero/.test(message)) { // from ink-guard.js
+    return "Divide by zero: a sum here divides by 0, or takes mod 0.";
+  }
   return message;
 }
 
 // An error Ink doesn't handle itself: its words are about its own code, not the story,
-// and nothing says which line. The two causes named are the ones we've found.
+// and nothing says which line. The cause named is the one we've found.
 function crashError(message) {
-  return `Ink stopped here without saying why. It does this on mod by zero, and on ->-> to something that isn't a scene, and maybe on other things. Its own words: "${message}"`;
+  return `Ink stopped here without saying why. It does this on ->-> to something that isn't a scene, and maybe on other things. Its own words: "${message}"`;
 }
 
 function sysLine(text, cls = "sys") {
@@ -593,7 +596,7 @@ function showCheck(data, paths, scanned) {
     heading("Other errors");
     for (const p of other) {
       const at = lineOf(p.message) || placeOf(p);
-      const text = p.kind === "crash" ? crashError(p.message) : p.message;
+      const text = p.kind === "crash" ? crashError(p.message) : humanError(p.message);
       finding(`${p.at ? `${p.at}: ` : ""}${text} (${p.count} runs)`, [
         ...(at ? [["Open", () => goToLine(at.file, at.line)]] : []),
         ["Replay", replay(p)],
