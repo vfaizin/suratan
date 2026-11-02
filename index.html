@@ -43,13 +43,21 @@
   </section>
 
   <section class="pane" data-pane="graph" aria-label="Graph">
-    <div class="bar">
-      <button id="graph-fit">Fit</button>
-      <button id="graph-tidy">Tidy</button>
-      <label class="check"><input type="checkbox" id="graph-hubs" checked> Collapse hubs</label>
-      <label class="check"><input type="checkbox" id="graph-labels" checked> Labels</label>
-      <span class="grow"></span>
-      <span id="graph-count" class="muted"></span>
+    <div class="bar graph-bar">
+      <input id="graph-find" type="search" placeholder="Find a scene" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Find a scene in the graph">
+      <span id="graph-found" class="muted" role="status"></span>
+      <button id="graph-focus" aria-pressed="false" title="Show one scene, what leads to it and where it goes">Focus</button>
+      <button id="graph-fit" title="As much as is readable">Fit</button>
+      <button id="graph-all" title="The whole story, however small">All</button>
+      <details id="graph-more" class="more">
+        <summary aria-label="More graph options" title="More graph options">⋯</summary>
+        <div class="menu">
+          <p id="graph-count" class="muted"></p>
+          <label class="check"><input type="checkbox" id="graph-hubs" checked> Collapse hubs</label>
+          <label class="check"><input type="checkbox" id="graph-labels" checked> Labels</label>
+          <button id="graph-tidy" title="Put every scene you moved back in its automatic place">Tidy</button>
+        </div>
+      </details>
     </div>
     <svg id="graph" role="img" aria-label="Scenes and the jumps between them"></svg>
     <div id="graph-card" class="card" hidden></div>

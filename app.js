@@ -76,7 +76,8 @@ function compile() {
   compiled = { json, issues, scan: result };
   showIssues();
   graph.setResult(result);
-  $("graph-count").textContent = `${graph.count.scenes} scenes, ${graph.count.jumps} jumps`;
+  findInGraph(false);
+  $("graph-count").textContent = `${graph.count.scenes} scenes, ${graph.count.jumps} jumps in the whole story`;
   fillPlayFrom();
   if (changed && player.story) $("play-stale").hidden = false;
   if (changed) { graph.setOverlay({ unreached: new Set(), deadends: new Set() }); }
@@ -529,13 +530,15 @@ $("file-delete").onclick = () => {
 const graph = new Graph($("graph"), {
   moved: loadJson("suratan:graph-moved", {}),
   onMoved(moved) { saveJson("suratan:graph-moved", moved); },
+  covered: () => $("graph-card").hidden ? 0 : $("graph-card").offsetHeight + 10,
   onSelect(name) {
     // With the script beside it, the script follows. The keyboard's focus stays put.
     // First, because moving the caret to another scene closes the card.
     const k = name && compiled.scan.knots.find(x => x.name === name);
     if (k && !k.isRoot && layoutMode() !== "narrow") goToLine(k.file, k.line, { focus: false, pane: false });
-    graph.setSelected(name);
     showCard(name);
+    graph.setSelected(name);
+    if (name && graph.shownFocus()) graph.fit(); // the card has just taken up some of the pane
   },
 });
 
@@ -578,6 +581,12 @@ function showCard(name) {
   }
   const row = document.createElement("div");
   row.className = "row wrap";
+  if (!graph.shownFocus()) {
+    const focus = document.createElement("button");
+    focus.textContent = "Focus";
+    focus.onclick = () => setGraphFocus(true, name);
+    row.append(focus);
+  }
   const open = document.createElement("button");
   open.textContent = "Open script";
   open.onclick = () => goToLine(k.file, k.line);
@@ -593,6 +602,54 @@ function showCard(name) {
 }
 
 $("graph-fit").onclick = () => graph.fit();
+$("graph-all").onclick = () => graph.fitAll();
+
+function setGraphFocus(on, name) {
+  graph.setFocus(on, name);
+  $("graph-focus").setAttribute("aria-pressed", on);
+  refreshCard();
+}
+$("graph-focus").onclick = () => setGraphFocus(!graph.focusOn);
+
+// The search. Typing marks what matches and shows the first; Enter steps through them.
+let graphMatches = [];
+let graphMatchAt = -1;
+
+function findInGraph(showFirst = true) {
+  const q = $("graph-find").value.trim().toLowerCase();
+  graphMatches = !q ? [] : compiled.scan.knots
+    .filter(k => !k.isRoot && !k.isFunction && k.name.toLowerCase().includes(q))
+    .map(k => k.name);
+  if (graphMatchAt >= graphMatches.length || showFirst) graphMatchAt = -1;
+  graph.setFound(q ? new Set(graphMatches) : null);
+  $("graph-found").textContent = !q ? "" : graphMatches.length ? `${graphMatches.length} found` : "none";
+  if (showFirst && graphMatches.length && !graph.shownFocus()) graph.reveal(graphMatches[0], true);
+}
+
+function stepInGraph() {
+  if (!graphMatches.length) return;
+  graphMatchAt = (graphMatchAt + 1) % graphMatches.length;
+  const name = graphMatches[graphMatchAt];
+  graph.onSelect(name);
+  graph.reveal(name, true);
+  $("graph-found").textContent = `${graphMatchAt + 1} of ${graphMatches.length}`;
+}
+
+$("graph-find").addEventListener("input", () => findInGraph());
+$("graph-find").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    stepInGraph();
+    if (layoutMode() === "narrow") e.target.blur(); // the keyboard would hide what was found
+  } else if (e.key === "Escape") {
+    e.target.value = "";
+    findInGraph();
+  }
+});
+
+addEventListener("pointerdown", e => {
+  if (!e.target.closest("#graph-more")) $("graph-more").open = false;
+});
 $("graph-tidy").onclick = () => {
   if (graph.moved.size && !confirm("Put every scene you moved back in its automatic place?")) return;
   graph.tidy();

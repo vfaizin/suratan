@@ -15,7 +15,7 @@ api.github.com.
 ## Files
 - `app.js`: the project; the script (one editor per file, so each keeps its undo), find, play, check and sync panes
 - `parse.js`: a light scan of the source for scenes, jumps and variables
-- `graph.js`: draws the scan; pan, pinch and drag a scene (its place stays on this device, not in the story)
+- `graph.js`: draws the scan; pan, pinch, find, focus on a scene, and drag one (its place stays on this device, not in the story)
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
 - `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
 - `github.js`: reads and writes the story's folder through GitHub's API

@@ -185,6 +185,16 @@ button.danger { color: var(--bad); }
 .issues .note { color: var(--muted); }
 
 /* The graph */
+.graph-bar { flex-wrap: nowrap; }
+#graph-find { flex: 1 1 70px; min-width: 70px; font-size: 16px; }
+#graph-found { flex: none; font-size: 12px; white-space: nowrap; }
+.graph-bar button { flex: none; padding: 4px 8px; }
+#graph-focus[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.more { position: relative; flex: none; }
+.more summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: center; min-width: 30px; min-height: 36px; border-radius: 7px; }
+.more summary::-webkit-details-marker { display: none; }
+.more .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; width: 210px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 4px 14px rgb(0 0 0 / .16); }
+.more .menu p { margin: 0; font-size: 12px; }
 #graph { flex: 1 1 auto; min-height: 0; width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; display: block; }
 .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
 .node text { fill: var(--text); font: 600 13px var(--sans); }
@@ -192,6 +202,9 @@ button.danger { color: var(--bad); }
 .node { cursor: pointer; }
 .node.entry rect { stroke: var(--accent); stroke-width: 2; }
 .node.hub rect { fill: var(--accent-soft); }
+.node.dim { opacity: .28; }
+.searching .edge, .searching .edge-label { opacity: .15; }
+.node.match rect { stroke: var(--accent); stroke-width: 2; fill: var(--accent-soft); }
 .node.selected rect { stroke: var(--accent); stroke-width: 2.5; }
 .node.current rect { fill: var(--accent); stroke: var(--accent); }
 .node.current text { fill: var(--accent-text); }
