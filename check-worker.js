@@ -42,20 +42,26 @@ onmessage = ({ data }) => {
     s.state.previousRandom = 0;
     const counts = () => paths.map(p => { try { return s.state.VisitCountAtPathString(p); } catch { return 0; } });
     let at = null;
+    let before = null;
+    const look = () => {
+      const now = counts();
+      const entered = paths.filter((_, i) => now[i] > before[i]);
+      if (entered.length) at = entered[entered.length - 1]; // a stitch follows its knot
+      before = now;
+    };
     try {
       for (const pick of choices) {
         while (s.canContinue) s.Continue();
         s.ChooseChoiceIndex(pick);
       }
-      let before = counts();
+      before = counts();
       while (s.canContinue) {
         s.Continue();
-        const now = counts();
-        const entered = paths.filter((_, i) => now[i] > before[i]);
-        if (entered.length) at = entered[entered.length - 1]; // a stitch follows its knot
-        before = now;
+        look();
       }
-    } catch { /* the run's own error; `at` holds as far as it got */ }
+    } catch { // the run's own error, which can come before the line that led to it is out
+      if (before) look();
+    }
     runErrors = kept;
     return at;
   };
@@ -85,6 +91,7 @@ onmessage = ({ data }) => {
 
     let outcome = null;
     let lastPath = null;
+    let crashed = false; // an error Ink doesn't handle itself: it leaves the story mid-line
     while (outcome === null) {
       try {
         while (story.canContinue) {
@@ -96,6 +103,7 @@ onmessage = ({ data }) => {
           if (!story.asyncContinueComplete) { outcome = "stuck"; break; }
         }
       } catch (e) {
+        crashed = !story.asyncContinueComplete;
         runErrors.push(e.message || String(e));
       }
       if (outcome) break;
@@ -115,7 +123,7 @@ onmessage = ({ data }) => {
     } else if (outcome === "broken") {
       totals.broken++;
       for (const m of runErrors) {
-        note(/ran out of content/.test(m) ? "deadend" : "error", m, lastPath, seed, choices);
+        note(/ran out of content/.test(m) ? "deadend" : crashed ? "crash" : "error", m, lastPath, seed, choices);
       }
     } else if (outcome === "ended") totals.ended++;
     else totals.capped++;
@@ -129,7 +137,7 @@ onmessage = ({ data }) => {
     }
 
     // A story stopped mid-line can't be reset, so the next run needs a new one. A loop
-    // stops it there, and so does an error Ink doesn't handle itself, such as 1 mod 0.
+    // stops it there, and so does a crash, such as 1 mod 0.
     if (!story.asyncContinueComplete) story = fresh();
 
     if (outcome === "stuck" && [...problems.values()].some(p => p.kind === "stuck" && p.count >= 3)) {

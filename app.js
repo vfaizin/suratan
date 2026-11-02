@@ -326,7 +326,7 @@ const player = {
         addStoryLine(s.currentText, s.currentTags);
       }
     } catch (e) {
-      this.errors.push(humanError(e.message));
+      this.errors.push(s.asyncContinueComplete ? humanError(e.message) : crashError(e.message));
     }
     this.broke = this.errors.length > 0;
     for (const m of this.errors) addLine(sysLine(m, "fail"));
@@ -379,6 +379,12 @@ function humanError(message) {
     return "Dead end: the story runs out here, with no jump, choice or -> END.";
   }
   return message;
+}
+
+// An error Ink doesn't handle itself: its words are about its own code, not the story,
+// and nothing says which line. The two causes named are the ones we've found.
+function crashError(message) {
+  return `Ink stopped here without saying why. It does this on mod by zero, and on ->-> to something that isn't a scene, and maybe on other things. Its own words: "${message}"`;
 }
 
 function sysLine(text, cls = "sys") {
@@ -587,7 +593,8 @@ function showCheck(data, paths, scanned) {
     heading("Other errors");
     for (const p of other) {
       const at = lineOf(p.message) || placeOf(p);
-      finding(`${p.at ? `${p.at}: ` : ""}${p.message} (${p.count} runs)`, [
+      const text = p.kind === "crash" ? crashError(p.message) : p.message;
+      finding(`${p.at ? `${p.at}: ` : ""}${text} (${p.count} runs)`, [
         ...(at ? [["Open", () => goToLine(at.file, at.line)]] : []),
         ["Replay", replay(p)],
       ]);
