@@ -1,7 +1,7 @@
 # Suratan
 
 The Kias project's story tool. Write [Ink](https://github.com/inkle/ink), see it
-as a graph, play it, and let a bot play it thousands of times. It runs in a
+as a graph, plan it on a board of days and hours, play it, and let a bot play it thousands of times. It runs in a
 browser on Mac, iPad and iPhone, offline once loaded.
 
 *Suratan* is Malay: what is written, and what is fated (*suratan takdir*). Beside
@@ -16,6 +16,7 @@ api.github.com.
 - `app.js`: the project; the script (one editor per file, so each keeps its undo), find, play, check and sync panes
 - `parse.js`: a light scan of the source for scenes, jumps and variables
 - `graph.js`: draws the scan; pan, pinch, find, focus on a scene, and drag one (its place stays on this device, not in the story)
+- `plan.js`: the Plan tab: reads and writes `plan.ink` and draws one day's board, places down and hours across
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
 - `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
 - `github.js`: reads and writes the story's folder through GitHub's API, and a file's earlier versions
@@ -29,3 +30,15 @@ The game reads the same `.ink` files later.
 - `# speaker: name` says who speaks a line.
 - Clock, money and inventory are plain variables and lists the game can read.
 - `EXTERNAL name(args)` is something only the game can do. Here it just succeeds.
+
+## The plan
+`plan.ink` holds the board as Ink comments, so no compile ever sees it. The game can ignore it. By hand:
+
+```
+// places: Home, Kedai, Study
+// day 1 | 8-10 | Home | once | morning, the note -> morning
+// days 1-7 | 8-22 | Kedai | open | the kedai is open -> kedai
+// day 1 | 14-16:30 | Study | once | the drawer
+```
+
+Each card is days, hours, place, `once` (a moment he can miss) or `open` (a window), then its words. `-> name` links a scene; without it the card isn't written yet. Other comments are left where they are.

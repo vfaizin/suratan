@@ -69,6 +69,25 @@
     <div id="graph-card" class="card" hidden></div>
   </section>
 
+  <section class="pane" data-pane="plan" aria-label="Plan">
+    <div class="bar plan-bar">
+      <div id="plan-days" class="plan-days" aria-label="Days"></div>
+      <span class="grow"></span>
+      <button id="plan-undo" title="Take back the board's last change">Undo</button>
+      <button id="plan-add-place">+ Place</button>
+      <button id="plan-add-card">+ Card</button>
+    </div>
+    <div id="plan-unread" class="sync-note" role="status" hidden>
+      <span id="plan-unread-text"></span>
+      <button id="plan-unread-go">Show</button>
+    </div>
+    <div id="plan-empty" class="plan-empty muted" hidden>
+      <p>Nothing planned yet. Add a place, then tap an hour in its row to say what happens there.</p>
+    </div>
+    <div id="plan-board" class="plan-board"></div>
+    <p class="plan-legend muted"><span class="plan-key once"></span> once <span class="plan-key open"></span> open <span class="plan-key once unwritten"></span> dashed: not written</p>
+  </section>
+
   <section class="pane" data-pane="play" aria-label="Play">
     <div class="bar">
       <button id="play-restart">Restart</button>
@@ -97,6 +116,7 @@
 <nav id="tabs" class="tabs" aria-label="Panes">
   <button data-tab="script">Script</button>
   <button data-tab="graph">Graph</button>
+  <button data-tab="plan">Plan</button>
   <button data-tab="play">Play</button>
   <button data-tab="check">Check</button>
 </nav>
@@ -144,6 +164,54 @@
       </div>
     </div>
   </div>
+</dialog>
+
+<dialog id="card-dialog">
+  <form id="card-form" novalidate>
+    <h2 id="card-title"></h2>
+    <label>What happens <input id="card-words" autocomplete="off"></label>
+    <label>Place <input id="card-place" list="card-places" autocomplete="off"></label>
+    <datalist id="card-places"></datalist>
+    <div class="card-fields">
+      <label>From day <input id="card-from" type="number" inputmode="numeric" min="1" max="366"></label>
+      <label>To day <input id="card-to" type="number" inputmode="numeric" min="1" max="366"></label>
+      <label>Starts <select id="card-start"></select></label>
+      <label>Ends <select id="card-end"></select></label>
+    </div>
+    <div class="card-kinds">
+      <label class="check"><input type="radio" name="card-kind" id="card-once"> Once: it happens at this hour, and he's there or he misses it</label>
+      <label class="check"><input type="radio" name="card-kind" id="card-open"> Open: he can come at any time in these hours</label>
+    </div>
+    <label>Scene <input id="card-scene" list="card-scenes" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Not written yet"></label>
+    <datalist id="card-scenes"></datalist>
+    <p id="card-message" class="message bad" role="status"></p>
+    <div class="row wrap">
+      <button type="button" id="card-delete" class="danger">Delete</button>
+      <button type="button" id="card-scene-go"></button>
+      <span class="row card-end">
+        <button type="button" id="card-cancel" class="quiet">Cancel</button>
+        <button type="submit" id="card-save" class="primary">Save</button>
+      </span>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="place-dialog">
+  <form id="place-form" novalidate>
+    <h2 id="place-title"></h2>
+    <label>Name <input id="place-name" autocomplete="off"></label>
+    <p id="place-message" class="message bad" role="status"></p>
+    <div class="row wrap">
+      <span id="place-moves" class="row">
+        <button type="button" id="place-up" aria-label="Move up" title="Move up">↑</button>
+        <button type="button" id="place-down" aria-label="Move down" title="Move down">↓</button>
+        <button type="button" id="place-remove" class="danger">Remove</button>
+      </span>
+      <span class="grow"></span>
+      <button type="button" id="place-cancel" class="quiet">Close</button>
+      <button type="submit" id="place-save" class="primary">Save</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="settings-dialog">

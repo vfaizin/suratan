@@ -2,6 +2,7 @@
 
 import { scan, reachablePaths } from "./parse.js";
 import { Graph } from "./graph.js";
+import { Board, PLAN } from "./plan.js";
 import { GitHub, Conflict } from "./github.js";
 import { SAMPLE } from "./sample.js";
 
@@ -74,13 +75,14 @@ function compile() {
 
   const result = scan(project.files);
   for (const name of Object.keys(project.files)) {
-    if (name !== MAIN && !result.includes.has(name)) {
+    if (name !== MAIN && name !== PLAN && !result.includes.has(name)) {
       issues.push({ level: "note", file: name, line: 0, text: `${name} isn't in the story: no file has INCLUDE ${name}.` });
     }
   }
   const changed = json !== compiled.json;
   compiled = { json, issues, scan: result };
   showIssues();
+  board.refresh();
   graph.setResult(result);
   findInGraph(false);
   $("graph-count").textContent = `${graph.count.scenes} scenes, ${graph.count.jumps} jumps in the whole story`;
@@ -326,11 +328,11 @@ $("jump-back").onclick = () => {
 };
 
 // At the end of this file. The jump to END lets it be played at once, and it's undoable.
-function createScene(name) {
+function createScene(name, note = "write this scene") {
   leaveTrail();
   source.setSelectionRange(source.value.length, source.value.length);
   const gap = source.value.endsWith("\n\n") || !source.value ? "" : source.value.endsWith("\n") ? "\n" : "\n\n";
-  insertText(`${gap}=== ${name} ===\n// TODO: write this scene\n-> END\n`);
+  insertText(`${gap}=== ${name} ===\n// TODO: ${note}\n-> END\n`);
   clearTimeout(scheduleCompile.timer);
   compile();
   const k = compiled.scan.knots.find(x => x.name === name);
@@ -548,6 +550,36 @@ $("file-delete").onclick = () => {
   syncEditors();
   compile();
 };
+
+/* ---------- Plan pane ---------- */
+
+const board = new Board({
+  day: loadJson("suratan:plan-day", 1),
+  onDay(day) { saveJson("suratan:plan-day", day); },
+  read: () => project.files[PLAN] ?? "",
+  write(text) {
+    project.files[PLAN] = text;
+    syncEditors();
+    persist();
+    scheduleCompile();
+  },
+  openLine(line) { goToLine(PLAN, line, { select: true }); },
+  canDrag: () => layoutMode() !== "narrow",
+  scenes: () => compiled.scan.knots.filter(k => !k.isRoot && !k.isFunction).map(k => k.name),
+  hasScene: name => !!findPlace(name, null),
+  nameTaken: name => compiled.scan.knots.some(k => k.name === name) || compiled.scan.vars.some(v => v.name === name),
+  openScene(name) {
+    const place = findPlace(name, null);
+    leaveTrail();
+    goToLine(place.file, place.line);
+  },
+  // Into the file showing, unless that's the plan itself or isn't part of the story.
+  writeScene(name, words) {
+    showPane("script");
+    if (project.current !== MAIN && !compiled.scan.includes.has(project.current)) showFile(MAIN);
+    createScene(name, words || undefined);
+  },
+});
 
 /* ---------- Graph pane ---------- */
 
@@ -1098,14 +1130,16 @@ function layoutMode() {
 function showPane(name) {
   const mode = layoutMode();
   if (mode === "narrow") phonePane = name;
-  else if (name !== "script" && !(mode === "wide" && name === "graph")) tabbed = name;
+  else if (mode === "wide" && name === "graph") { if (tabbed === "plan") tabbed = "play"; }
+  else if (name !== "script") tabbed = name;
   applyLayout();
 }
 
 function applyLayout() {
   const mode = layoutMode();
   let shown;
-  if (mode === "wide") shown = ["script", "graph", tabbed === "graph" ? "play" : tabbed];
+  // The board needs the room, so on wide it takes the graph's place as well as its own.
+  if (mode === "wide") shown = tabbed === "plan" ? ["script", "plan"] : ["script", "graph", tabbed === "graph" ? "play" : tabbed];
   else if (mode === "medium") shown = ["script", tabbed];
   else shown = [phonePane];
 
@@ -1114,8 +1148,8 @@ function applyLayout() {
   }
   for (const b of document.querySelectorAll("#tabs button")) {
     const t = b.dataset.tab;
-    // On wide, script and graph always show, so only the third slot needs tabs.
-    b.classList.toggle("hide", (mode === "wide" && (t === "script" || t === "graph")) || (mode === "medium" && t === "script"));
+    // On wide, script always shows and graph does unless the board has its place.
+    b.classList.toggle("hide", (mode === "wide" && (t === "script" || (t === "graph" && tabbed !== "plan"))) || (mode === "medium" && t === "script"));
     b.classList.toggle("active", shown.includes(t));
   }
   if (shown.includes("graph")) {
@@ -1125,6 +1159,7 @@ function applyLayout() {
     });
   }
   if (shown.includes("script")) paintBackdrop();
+  if (shown.includes("plan")) board.render();
   showSyncState();
 }
 
