@@ -3,7 +3,8 @@
 import { scan, reachablePaths } from "./parse.js";
 import { Graph } from "./graph.js";
 import { Board, PLAN } from "./plan.js";
-import { Notes, noteTitle } from "./notes.js";
+import { Notes, noteFile, noteTitle } from "./notes.js";
+import { Story, STORY } from "./story.js";
 import { GitHub, Conflict } from "./github.js";
 import { SAMPLE } from "./sample.js";
 
@@ -77,7 +78,7 @@ function compile() {
 
   const result = scan(project.files);
   for (const name of Object.keys(project.files)) {
-    if (name !== MAIN && name !== PLAN && !result.includes.has(name)) {
+    if (name !== MAIN && name !== PLAN && name !== STORY && !result.includes.has(name)) {
       issues.push({ level: "note", file: name, line: 0, text: `${name} isn't in the story: no file has INCLUDE ${name}.` });
     }
   }
@@ -85,6 +86,7 @@ function compile() {
   compiled = { json, issues, scan: result };
   showIssues();
   board.refresh();
+  story.refresh();
   graph.setResult(result);
   findInGraph(false);
   $("graph-count").textContent = `${graph.count.scenes} scenes, ${graph.count.jumps} jumps in the whole story`;
@@ -578,18 +580,25 @@ $("file-delete").onclick = () => {
 
 /* ---------- Plan pane ---------- */
 
-const board = new Board({
-  day: loadJson("suratan:plan-day", 1),
-  onDay(day) { saveJson("suratan:plan-day", day); },
-  read: () => project.files[PLAN] ?? "",
+// A board's file changes without typing, so its editor and the sync need telling.
+const boardFile = name => ({
+  file: name,
+  read: () => project.files[name] ?? "",
   write(text) {
-    project.files[PLAN] = text;
+    project.files[name] = text;
     syncEditors();
     persist();
     scheduleCompile();
   },
-  openLine(line) { goToLine(PLAN, line, { select: true }); },
+  openLine(line) { goToLine(name, line, { select: true }); },
   canDrag: () => layoutMode() !== "narrow",
+});
+
+const board = new Board({
+  ...boardFile(PLAN),
+  rowWord: "place",
+  day: loadJson("suratan:plan-day", 1),
+  onDay(day) { saveJson("suratan:plan-day", day); },
   scenes: () => compiled.scan.knots.filter(k => !k.isRoot && !k.isFunction).map(k => k.name),
   hasScene: name => !!findPlace(name, null),
   nameTaken: name => compiled.scan.knots.some(k => k.name === name) || compiled.scan.vars.some(v => v.name === name),
@@ -611,6 +620,22 @@ const board = new Board({
 const notes = new Notes(project.notes, {
   saved: () => persist(),
   narrow: () => layoutMode() === "narrow",
+});
+
+/* ---------- Story pane ---------- */
+
+const story = new Story({
+  ...boardFile(STORY),
+  rowWord: "thread",
+  starters: ["The father", "The journal", "The machine", "Friends", "His mother"],
+  view: loadJson("suratan:story-view", "board"),
+  onView(view) { saveJson("suratan:story-view", view); },
+  noteNames: () => Object.keys(project.notes.files).map(noteTitle),
+  hasNote: title => project.notes.files[noteFile(title)] !== undefined,
+  openNote(title) { showPane("notes"); notes.show(noteFile(title)); },
+  makeNote(title) { showPane("notes"); notes.add(title); },
+  nextDay: () => board.plan.cards.length ? board.dayCount() + 1 : 1,
+  openDay(day) { showPane("plan"); board.setDay(day); },
 });
 
 /* ---------- Graph pane ---------- */
@@ -1159,11 +1184,13 @@ function layoutMode() {
   return w >= 1180 ? "wide" : w >= 720 ? "medium" : "narrow";
 }
 
+const ALONE = new Set(["notes", "story"]); // for thinking, so they have the window to themselves
+
 function showPane(name) {
   const mode = layoutMode();
   if (mode === "narrow") phonePane = name;
-  else if (name === "script") { if (tabbed === "notes") tabbed = "play"; }
-  else if (mode === "wide" && name === "graph") { if (tabbed === "plan" || tabbed === "notes") tabbed = "play"; }
+  else if (name === "script") { if (ALONE.has(tabbed)) tabbed = "play"; }
+  else if (mode === "wide" && name === "graph") { if (tabbed === "plan" || ALONE.has(tabbed)) tabbed = "play"; }
   else tabbed = name;
   applyLayout();
 }
@@ -1171,9 +1198,8 @@ function showPane(name) {
 function applyLayout() {
   const mode = layoutMode();
   let shown;
-  // Notes are for thinking, so they have the window to themselves. The board needs the
-  // room, so on wide it takes the graph's place as well as its own.
-  if (mode !== "narrow" && tabbed === "notes") shown = ["notes"];
+  // The day's board needs the room, so on wide it takes the graph's place as well as its own.
+  if (mode !== "narrow" && ALONE.has(tabbed)) shown = [tabbed];
   else if (mode === "wide") shown = tabbed === "plan" ? ["script", "plan"] : ["script", "graph", tabbed === "graph" ? "play" : tabbed];
   else if (mode === "medium") shown = ["script", tabbed];
   else shown = [phonePane];
@@ -1183,9 +1209,9 @@ function applyLayout() {
   }
   for (const b of document.querySelectorAll("#tabs button")) {
     const t = b.dataset.tab;
-    // Script always shows, and on wide so does graph, unless the board or notes have their place.
-    const scriptShows = mode !== "narrow" && tabbed !== "notes";
-    const graphShows = mode === "wide" && tabbed !== "plan" && tabbed !== "notes";
+    // Script always shows, and on wide so does graph, unless something has taken their place.
+    const scriptShows = mode !== "narrow" && !ALONE.has(tabbed);
+    const graphShows = mode === "wide" && tabbed !== "plan" && !ALONE.has(tabbed);
     b.classList.toggle("hide", (t === "script" && scriptShows) || (t === "graph" && graphShows));
     b.classList.toggle("active", shown.includes(t));
   }
@@ -1197,6 +1223,7 @@ function applyLayout() {
   }
   if (shown.includes("script")) paintBackdrop();
   if (shown.includes("plan")) board.render();
+  if (shown.includes("story")) story.render(); // a page may have been renamed in Notes
   showSyncState();
 }
 

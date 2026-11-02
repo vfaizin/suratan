@@ -268,13 +268,14 @@ button.danger { color: var(--bad); }
 .plan-days button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .plan-bar > button { flex: none; font-size: 13px; }
 .plan-empty { flex: 1 1 auto; padding: 24px 16px; }
-.plan-empty p { margin: 0; max-width: 34em; }
+.plan-empty p { margin: 0 0 12px; max-width: 34em; }
 .plan-board { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--surface); }
 .plan-grid { width: max-content; --place: 92px; }
 .plan-head { display: flex; position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--line); }
 .plan-corner { flex: none; width: var(--place); position: sticky; left: 0; z-index: 1; background: var(--surface); border-right: 1px solid var(--line); }
-.plan-hours { display: flex; width: var(--tracks); }
-.plan-hours span { flex: none; width: var(--hour); padding: 4px 0 4px 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.plan-scale { width: var(--tracks); }
+.plan-hours { display: flex; }
+.plan-hours span { flex: none; width: var(--major); padding: 4px 0 4px 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .plan-row { display: flex; border-bottom: 1px solid var(--line); }
 .plan-place { flex: none; width: var(--place); position: sticky; left: 0; z-index: 2; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: var(--surface); padding: 4px 8px; font-size: 13px; font-weight: 600; text-align: left; overflow-wrap: anywhere; }
 .plan-track {
@@ -282,10 +283,10 @@ button.danger { color: var(--bad); }
   background-image:
     linear-gradient(to right, var(--line) 1px, transparent 1px),
     linear-gradient(to right, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px);
-  background-size: var(--hour) 100%, calc(var(--hour) / 2) 100%;
+  background-size: var(--major) 100%, var(--minor) 100%;
 }
 .plan-card { position: absolute; display: flex; align-items: center; padding: 2px 6px; overflow: hidden; border: 1.5px solid var(--accent); border-radius: 6px; font-size: 12.5px; line-height: 1.25; cursor: pointer; user-select: none; -webkit-user-select: none; }
-.plan-card.once { background: var(--accent-soft); }
+.plan-card.once, .plan-card.story { background: var(--accent-soft); }
 .plan-card.open { background: var(--surface); }
 .plan-card.unwritten { border-style: dashed; }
 .plan-card.missing { border-color: var(--warn); background: var(--warn-soft); }
@@ -299,6 +300,19 @@ button.danger { color: var(--bad); }
 .plan-card.dragging { z-index: 4; cursor: grabbing; box-shadow: 0 4px 14px rgb(0 0 0 / .25); overflow: visible; flex-direction: column; align-items: flex-start; justify-content: center; }
 .plan-card.dragging .plan-card-words { -webkit-line-clamp: 1; }
 .plan-card.dragging .plan-card-time { display: block; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.plan-marks { position: relative; height: 22px; }
+.plan-mark { position: absolute; top: 0; bottom: 3px; padding: 0 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11.5px; line-height: 19px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border-radius: 4px; }
+.story-outline { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 24px; background: var(--surface); }
+.story-outline h3 { margin: 16px max(14px, calc((100% - 640px) / 2)) 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.story-outline p { margin: 16px; }
+.outline-card { display: block; width: 100%; min-height: 0; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 7px max(14px, calc((100% - 640px) / 2)); }
+.outline-card:hover { background: var(--accent-soft); }
+.outline-words { display: block; font: 16px/1.4 var(--serif); overflow-wrap: anywhere; }
+.outline-place { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.outline-card.missing .outline-words { color: var(--warn); }
+.story-link { display: flex; align-items: flex-end; gap: 8px; }
+.story-link label { flex: 1 1 auto; min-width: 0; }
+.story-link button { flex: none; margin-bottom: 8px; }
 .plan-legend { margin: 0; padding: 5px 10px; border-top: 1px solid var(--line); font-size: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .plan-key { display: inline-block; width: 18px; height: 11px; border: 1.5px solid var(--accent); border-radius: 3px; margin-left: 6px; }
 .plan-key:first-child { margin-left: 0; }

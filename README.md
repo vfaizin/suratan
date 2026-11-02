@@ -16,7 +16,9 @@ api.github.com.
 - `app.js`: the project; the script (one editor per file, so each keeps its undo), find, play, check and sync panes
 - `parse.js`: a light scan of the source for scenes, jumps and variables
 - `graph.js`: draws the scan; pan, pinch, find, focus on a scene, and drag one (its place stays on this device, not in the story)
-- `plan.js`: the Plan tab: reads and writes `plan.ink` and draws one day's board, places down and hours across
+- `timeline.js`: what the Story and Plan boards share: rows, time across, cards, dragging, undo
+- `plan.js`: the Plan tab: `plan.ink`, one day's board, places down and hours across
+- `story.js`: the Story tab: `story.ink`, the whole six months, threads down and weeks across, as a board or an outline
 - `notes.js`: the Notes tab: pages of plain thinking, one Markdown file each, in `notes/` inside the story's folder
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
 - `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
@@ -42,4 +44,13 @@ The game reads the same `.ink` files later.
 // day 1 | 14-16:30 | Study | once | the drawer
 ```
 
-Each card is days, hours, place, `once` (a moment he can miss) or `open` (a window), then its words. `-> name` links a scene; without it the card isn't written yet. Other comments are left where they are.
+`story.ink` is the same kind of file for the Story tab. A month counts as four weeks, so `dec 3` is December's third week:
+
+```
+// threads: The father, The journal
+// mark mar | results
+// mark may-jun | intake letter
+// dec 3 - jan 2 | The father | the quiet house | note: The father | day: 1
+```
+
+In `plan.ink`, each card is days, hours, place, `once` (a moment he can miss) or `open` (a window), then its words. `-> name` links a scene; without it the card isn't written yet. Other comments are left where they are.
