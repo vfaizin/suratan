@@ -28,6 +28,12 @@
   <button id="settings" class="quiet" aria-label="Settings" title="Settings">⚙︎</button>
 </header>
 
+<div id="sync-note" class="sync-note" role="status" hidden>
+  <span id="sync-note-text"></span>
+  <button id="sync-note-do"></button>
+  <button id="sync-note-close" class="quiet" aria-label="Dismiss" title="Dismiss" hidden>×</button>
+</div>
+
 <main id="panes">
   <section class="pane" data-pane="script" aria-label="Script">
     <div class="bar script-bar">
@@ -107,11 +113,36 @@
     <label>New name <input id="file-name" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
     <p id="file-message" class="message" role="status"></p>
   </div>
-  <div class="row">
+  <div class="row wrap">
     <button type="button" id="file-delete" class="danger">Delete</button>
+    <button type="button" id="file-history">Earlier versions</button>
     <span class="grow"></span>
     <button type="button" id="file-close" class="quiet">Close</button>
     <button type="button" id="file-rename" class="primary">Rename</button>
+  </div>
+  <div id="file-removed" class="file-removed" hidden>
+    <h3>Deleted or renamed here</h3>
+    <div id="file-removed-list" class="row wrap"></div>
+  </div>
+</dialog>
+
+<dialog id="history-dialog" class="history-dialog">
+  <div class="row">
+    <h2 id="history-title"></h2>
+    <span class="grow"></span>
+    <button type="button" id="history-close" class="quiet">Close</button>
+  </div>
+  <p id="history-message" class="message" role="status"></p>
+  <div class="history-body">
+    <div id="history-list" class="history-list"></div>
+    <div class="history-view">
+      <p id="history-summary" class="muted"></p>
+      <pre id="history-diff" class="history-diff"></pre>
+      <div class="row">
+        <span class="grow"></span>
+        <button type="button" id="history-restore" class="primary" hidden>Restore this version</button>
+      </div>
+    </div>
   </div>
 </dialog>
 
@@ -123,6 +154,7 @@
     <label>Branch <input id="gh-branch" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
     <label>Folder <input id="gh-dir" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
     <label>Token <input id="gh-token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label class="check"><input id="gh-auto" type="checkbox" checked> Sync by itself, a minute after you stop typing</label>
     <p class="muted">Make a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>: only the story's repository, with Contents set to read and write.</p>
     <p id="gh-message" class="message" role="status"></p>
     <div class="row">

@@ -21,10 +21,12 @@ export class GitHub {
     Object.assign(this, { repo, branch, dir: dir.replace(/^\/+|\/+$/g, ""), token });
   }
 
-  async call(path, options = {}) {
+  call(path, options) { return this.api(`contents/${path}`, options); }
+
+  async api(path, options = {}) {
     let res;
     try {
-      res = await fetch(`${API}/repos/${this.repo}/contents/${path}`, {
+      res = await fetch(`${API}/repos/${this.repo}/${path}`, {
         ...options,
         cache: "no-store",
         headers: {
@@ -64,11 +66,21 @@ export class GitHub {
     if (res.status === 404) throw new Error("Can't find that repository or branch with this token.");
   }
 
-  async read(name) {
-    const res = await this.call(`${this.dir}/${encodeURIComponent(name)}?ref=${encodeURIComponent(this.branch)}`);
+  // ref: a commit, for an earlier version. Without it, the branch's latest.
+  async read(name, ref = this.branch) {
+    const res = await this.call(`${this.dir}/${encodeURIComponent(name)}?ref=${encodeURIComponent(ref)}`);
+    if (res.status === 404 && ref !== this.branch) return null; // not in that commit
     if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${name}.`);
     const f = await res.json();
     return { text: decode(f.content), sha: f.sha };
+  }
+
+  // The commits that touched a file, newest first, 30 to a page.
+  async history(name, page = 1) {
+    const path = encodeURIComponent(`${this.dir}/${name}`);
+    const res = await this.api(`commits?path=${path}&sha=${encodeURIComponent(this.branch)}&per_page=30&page=${page}`);
+    if (!res.ok) throw new Error(`GitHub answered ${res.status} for the history of ${name}.`);
+    return (await res.json()).map(c => ({ sha: c.sha, date: c.commit.author.date }));
   }
 
   // sha is the version this edit started from; none means a new file.

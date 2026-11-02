@@ -24,13 +24,19 @@ function saveJson(key, value) {
 // syncedFrom: the repository, branch and folder that `synced` describes.
 const project = loadJson("suratan:project", null) || { files: { [MAIN]: SAMPLE }, synced: {}, current: MAIN };
 project.deleted ||= {};
+project.removed ||= {}; // name -> when it was deleted or renamed here, to find its history by
 if (project.files[project.current] === undefined) project.current = Object.keys(project.files)[0];
 const github = loadJson("suratan:github", { repo: "vfaizin/kias", branch: "main", dir: "assets/story", token: "" });
+github.auto ??= true;
 let saveFailed = false;
 
 function persist() {
+  const dirty = dirtyCount() > 0;
+  if (!dirty) delete project.dirtySince;
+  else project.dirtySince ??= Date.now();
   saveFailed = !saveJson("suratan:project", project);
   showSyncState();
+  planAutoSync();
 }
 navigator.storage?.persist?.().catch(() => {});
 
@@ -135,7 +141,12 @@ function editorFor(name) {
 function syncEditors() {
   for (const [name, ed] of editors) {
     if (project.files[name] === undefined) { ed.remove(); editors.delete(name); }
-    else if (ed.value !== project.files[name]) ed.value = project.files[name];
+    else if (ed.value !== project.files[name]) {
+      const { selectionStart: from, selectionEnd: to, scrollTop } = ed;
+      ed.value = project.files[name];
+      ed.setSelectionRange(from, to);
+      ed.scrollTop = scrollTop;
+    }
   }
   if (project.files[project.current] === undefined) project.current = MAIN in project.files ? MAIN : Object.keys(project.files)[0];
   showFile(project.current);
@@ -469,7 +480,10 @@ $("new-file").onclick = () => {
 
 // A synced file is removed from GitHub at the next sync. Its history stays there.
 function forgetFile(name) {
-  if (project.synced[name]) project.deleted[name] = project.synced[name].sha;
+  if (project.synced[name]) {
+    project.deleted[name] = project.synced[name].sha;
+    project.removed[name] = Date.now();
+  }
   delete project.synced[name];
   delete project.files[name];
 }
@@ -488,6 +502,15 @@ function renameFile(from, to) {
 
 $("file-menu").onclick = () => {
   const locked = project.current === MAIN;
+  const removed = Object.keys(project.removed).filter(n => project.files[n] === undefined)
+    .sort((a, b) => project.removed[b] - project.removed[a]).slice(0, 20);
+  $("file-removed").hidden = !removed.length;
+  $("file-removed-list").replaceChildren(...removed.map(n => {
+    const b = document.createElement("button");
+    b.textContent = n;
+    b.onclick = () => { $("file-dialog").close(); openHistory(n); };
+    return b;
+  }));
   $("file-title").textContent = project.current;
   $("file-locked").hidden = !locked;
   $("file-actions").hidden = locked;
@@ -498,6 +521,7 @@ $("file-menu").onclick = () => {
   $("file-dialog").showModal();
 };
 $("file-close").onclick = () => $("file-dialog").close();
+$("file-history").onclick = () => { $("file-dialog").close(); openHistory(project.current); };
 $("file-rename").onclick = () => {
   const from = project.current;
   let to = $("file-name").value.trim();
@@ -1111,6 +1135,74 @@ addEventListener("resize", applyLayout);
 
 let syncing = false;
 let syncError = "";
+const conflicts = new Set(); // files sync by itself found changed in both places
+let lastSyncAt = 0;
+let autoTimer = null;
+let noteDismissed = false;
+
+const AUTO_PAUSE = 60 * 1000; // after the last edit, so a working session isn't a commit a minute
+const AUTO_RETRY = 5 * 60 * 1000; // after a failure or with a conflict waiting
+const NOTE_AFTER = 5 * 60 * 1000; // a brief loss of signal isn't worth a note
+
+function planAutoSync() {
+  clearTimeout(autoTimer);
+  if (!github.token || !github.auto || syncing || !dirtyCount()) return;
+  autoTimer = setTimeout(() => {
+    if (document.querySelector("dialog[open]")) { planAutoSync(); return; }
+    sync({ auto: true });
+  }, syncError || conflicts.size ? AUTO_RETRY : AUTO_PAUSE);
+}
+
+// Leaving is the moment to try, as a phone may not run again for hours; coming back,
+// another device may have written something.
+function syncOnReturn() {
+  if (!github.token || !github.auto || !navigator.onLine) return;
+  if (document.querySelector("dialog[open]")) return;
+  if (document.visibilityState === "hidden") { if (dirtyCount()) sync({ auto: true }); return; }
+  if (Date.now() - lastSyncAt > 60 * 1000) sync({ auto: true });
+}
+document.addEventListener("visibilitychange", syncOnReturn);
+addEventListener("online", syncOnReturn);
+
+function minutes(ms) {
+  const m = Math.round(ms / 60000);
+  return m < 60 ? `${m} min` : `${Math.round(m / 60)} h`;
+}
+
+function showNote(text, action, run, { bad = false, dismiss = false } = {}) {
+  const note = $("sync-note");
+  note.hidden = !text;
+  if (!text) return;
+  note.classList.toggle("bad", bad);
+  $("sync-note-text").textContent = text;
+  $("sync-note-do").hidden = !action;
+  $("sync-note-do").textContent = action || "";
+  $("sync-note-do").onclick = run;
+  $("sync-note-close").hidden = !dismiss;
+}
+
+// The note under the header: only for what needs a person.
+function showSyncNote(dirty) {
+  const syncNow = () => sync().catch(() => {});
+  const age = project.dirtySince ? Date.now() - project.dirtySince : 0;
+  if (saveFailed) {
+    showNote("This browser refused to save your latest words. Keep this page open, and sync or copy them out.", github.token ? "Sync now" : "", syncNow, { bad: true });
+  } else if (conflicts.size) {
+    const names = [...conflicts].join(", ");
+    showNote(`${names} changed here and on GitHub. Your words are safe on this device.`, "Decide", syncNow, { bad: true });
+  } else if (github.token && syncError && !/^Can't reach/.test(syncError)) {
+    showNote(`Sync failed: ${syncError} Your words are safe on this device.`, "Try again", syncNow, { bad: true });
+  } else if (github.token && dirty && age > NOTE_AFTER) {
+    const why = navigator.onLine ? "GitHub can't be reached" : "offline";
+    showNote(`Not synced for ${minutes(age)} (${why}). Your words are safe on this device, but only here.`, navigator.onLine ? "Try again" : "", syncNow);
+  } else if (!github.token && !noteDismissed && (Object.keys(project.files).length > 1 || project.files[MAIN] !== SAMPLE)) {
+    showNote("These words are only on this device. Connect GitHub to keep them safe, and to have earlier versions.", "Connect", openSettings, { dismiss: true });
+  } else {
+    showNote("");
+  }
+}
+$("sync-note-close").onclick = () => { noteDismissed = true; showNote(""); };
+setInterval(() => showSyncState(), 30 * 1000); // the note's "for 12 min" stays true
 
 function dirtyCount() {
   return Object.keys(project.files).filter(n => project.files[n] !== project.synced[n]?.text).length + Object.keys(project.deleted).length;
@@ -1120,6 +1212,7 @@ function showSyncState() {
   const el = $("sync-state");
   const dirty = dirtyCount();
   el.className = "sync-state";
+  showSyncNote(dirty);
   if (saveFailed) {
     el.textContent = "Not saved: this browser refused";
     el.classList.add("bad");
@@ -1159,7 +1252,9 @@ function copyName(name) {
   return name.replace(/\.ink$/, `.mine-${stamp}.ink`);
 }
 
-async function resolveConflict(gh, name, remoteSha) {
+async function resolveConflict(gh, name, remoteSha, auto) {
+  // Sync by itself doesn't interrupt: it says so, and a Sync pressed by hand asks.
+  if (auto) { conflicts.add(name); return; }
   const choice = await askConflict(name);
   if (choice === "mine") {
     project.synced[name] = { sha: await gh.write(name, project.files[name], remoteSha), text: project.files[name] };
@@ -1171,11 +1266,17 @@ async function resolveConflict(gh, name, remoteSha) {
   }
 }
 
-async function sync() {
-  if (!github.token) { openSettings(); return; }
+// auto: started by itself rather than by a person, so it doesn't open anything.
+// Typing goes on during a sync, so a file is only replaced if it's still the words that
+// were looked at; otherwise it's left for the next one.
+async function sync({ auto = false } = {}) {
+  if (!github.token) { if (!auto) openSettings(); return; }
   if (syncing) return;
+  clearTimeout(autoTimer);
   syncing = true;
   syncError = "";
+  conflicts.clear();
+  lastSyncAt = Date.now();
   showSyncState();
   $("sync").disabled = true;
   const gh = new GitHub(github);
@@ -1201,6 +1302,7 @@ async function sync() {
       const base = project.synced[name];
       if (local === undefined) {
         const f = await gh.read(name);
+        if (project.files[name] !== undefined) continue;
         project.files[name] = f.text;
         project.synced[name] = { sha: f.sha, text: f.text };
       } else if (base?.sha === sha) {
@@ -1209,23 +1311,25 @@ async function sync() {
           catch (e) {
             if (!(e instanceof Conflict)) throw e;
             const fresh = await gh.list();
-            await resolveConflict(gh, name, fresh[name]);
+            await resolveConflict(gh, name, fresh[name], auto);
           }
         }
       } else if (!base || local === base.text) {
         // First sync on this device, or nothing changed here: GitHub's is the one,
         // unless this device has never seen the file and holds different words.
         const f = await gh.read(name);
+        if (project.files[name] !== local) continue;
         if (!base && local !== f.text && !(name === MAIN && local === SAMPLE)) {
-          await resolveConflict(gh, name, sha);
+          await resolveConflict(gh, name, sha, auto);
         } else {
           project.files[name] = f.text;
           project.synced[name] = { sha: f.sha, text: f.text };
         }
       } else {
         const f = await gh.read(name);
+        if (project.files[name] !== local) continue;
         if (f.text === local) project.synced[name] = { sha: f.sha, text: f.text };
-        else await resolveConflict(gh, name, sha);
+        else await resolveConflict(gh, name, sha, auto);
       }
     }
     for (const name of Object.keys(project.files)) {
@@ -1244,7 +1348,7 @@ async function sync() {
     compile();
   } catch (e) {
     syncError = e.message;
-    throw e;
+    if (!auto) throw e;
   } finally {
     syncing = false;
     $("sync").disabled = false;
@@ -1257,6 +1361,7 @@ function fillSettings() {
   $("gh-branch").value = github.branch;
   $("gh-dir").value = github.dir;
   $("gh-token").value = github.token;
+  $("gh-auto").checked = github.auto;
   $("gh-message").textContent = "";
   $("gh-message").className = "message";
 }
@@ -1264,6 +1369,11 @@ function openSettings() { fillSettings(); $("settings-dialog").showModal(); }
 
 $("settings").onclick = openSettings;
 $("gh-close").onclick = () => $("settings-dialog").close();
+$("gh-auto").onchange = e => {
+  github.auto = e.target.checked;
+  saveJson("suratan:github", github);
+  planAutoSync();
+};
 $("gh-forget").onclick = () => {
   github.token = "";
   saveJson("suratan:github", github);
@@ -1292,6 +1402,185 @@ $("gh-save").onclick = async () => {
 };
 $("sync").onclick = () => sync().catch(() => {});
 
+/* ---------- Earlier versions: GitHub's history of a file ---------- */
+
+const MAX_DIFF_LINES = 4000; // past this a line-by-line comparison would hang a phone
+const history = { name: null, page: 1, rows: [], chosen: null, cache: new Map() };
+
+function historyMessage(text, bad = false) {
+  $("history-message").textContent = text;
+  $("history-message").className = `message${bad ? " bad" : ""}`;
+}
+
+async function openHistory(name) {
+  Object.assign(history, { name, page: 1, rows: [], chosen: null });
+  history.cache.clear();
+  $("history-title").textContent = name;
+  $("history-list").replaceChildren();
+  $("history-diff").replaceChildren();
+  $("history-summary").textContent = "";
+  $("history-restore").hidden = true;
+  historyMessage("");
+  $("history-dialog").showModal();
+  if (!github.token) {
+    historyMessage("Earlier versions come from GitHub. Connect it in settings to have them.");
+    return;
+  }
+  await loadHistory();
+}
+
+async function loadHistory() {
+  historyMessage("Asking GitHub…");
+  try {
+    const more = await new GitHub(github).history(history.name, history.page);
+    history.rows.push(...more);
+    historyMessage(history.rows.length ? "" : "GitHub has no versions of this yet: it hasn't been synced.");
+    const list = $("history-list");
+    list.replaceChildren(...history.rows.map((row, i) => {
+      const b = document.createElement("button");
+      b.textContent = new Date(row.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      if (i === 0) b.textContent += " (latest)";
+      b.classList.toggle("active", history.chosen === row);
+      b.onclick = () => chooseVersion(row);
+      return b;
+    }));
+    if (more.length === 30) {
+      const older = document.createElement("button");
+      older.textContent = "Older…";
+      older.onclick = () => { history.page++; loadHistory(); };
+      list.append(older);
+    }
+    if (!history.chosen && history.rows.length) chooseVersion(history.rows[0]);
+  } catch (e) {
+    historyMessage(e.message, true);
+  }
+}
+
+// Which lines to take away from `now` and which to bring back from `then`. Lines kept
+// at either end are skipped first, so an ordinary edit compares only a few lines.
+function lineChanges(now, then) {
+  const a = now === "" ? [] : now.split("\n");
+  const b = then === "" ? [] : then.split("\n");
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length, endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+  const midA = a.slice(start, endA), midB = b.slice(start, endB);
+  const out = a.slice(0, start).map(text => ({ kind: "same", text }));
+  if (midA.length * midB.length > MAX_DIFF_LINES * MAX_DIFF_LINES) {
+    out.push(...midA.map(text => ({ kind: "gone", text })), ...midB.map(text => ({ kind: "back", text })));
+  } else {
+    // Longest common subsequence: table[i][j] is how many of midA[i..] and midB[j..] match.
+    const table = Array.from({ length: midA.length + 1 }, () => new Uint32Array(midB.length + 1));
+    for (let i = midA.length - 1; i >= 0; i--) {
+      for (let j = midB.length - 1; j >= 0; j--) {
+        table[i][j] = midA[i] === midB[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+      }
+    }
+    let i = 0, j = 0;
+    while (i < midA.length || j < midB.length) {
+      if (i < midA.length && j < midB.length && midA[i] === midB[j]) { out.push({ kind: "same", text: midA[i] }); i++; j++; }
+      else if (j < midB.length && (i === midA.length || table[i][j + 1] >= table[i + 1][j])) out.push({ kind: "back", text: midB[j++] });
+      else out.push({ kind: "gone", text: midA[i++] });
+    }
+  }
+  out.push(...a.slice(endA).map(text => ({ kind: "same", text })));
+  return out;
+}
+
+function showChanges(changes) {
+  const CONTEXT = 2;
+  const near = changes.map(() => false);
+  changes.forEach((c, i) => {
+    if (c.kind === "same") return;
+    for (let k = Math.max(0, i - CONTEXT); k <= Math.min(changes.length - 1, i + CONTEXT); k++) near[k] = true;
+  });
+  const parts = [];
+  let skipped = false;
+  changes.forEach((c, i) => {
+    if (!near[i]) {
+      if (!skipped) {
+        const s = document.createElement("span");
+        s.className = "skip";
+        s.textContent = "…";
+        parts.push(s);
+      }
+      skipped = true;
+      return;
+    }
+    skipped = false;
+    const s = document.createElement("span");
+    s.className = c.kind;
+    s.textContent = `${c.kind === "gone" ? "− " : c.kind === "back" ? "+ " : "  "}${c.text}\n`;
+    parts.push(s);
+  });
+  $("history-diff").replaceChildren(...parts);
+}
+
+async function chooseVersion(row) {
+  history.chosen = row;
+  for (const b of $("history-list").children) b.classList.remove("active");
+  $("history-list").children[history.rows.indexOf(row)]?.classList.add("active");
+  $("history-diff").replaceChildren();
+  $("history-restore").hidden = true;
+  $("history-summary").textContent = "Fetching…";
+  try {
+    if (!history.cache.has(row.sha)) {
+      history.cache.set(row.sha, await new GitHub(github).read(history.name, row.sha));
+    }
+    if (history.chosen !== row) return; // another was chosen while this one came
+    const version = history.cache.get(row.sha);
+    if (!version) {
+      $("history-summary").textContent = "This version is where the file was deleted or renamed. Choose an earlier one.";
+      return;
+    }
+    const now = project.files[history.name] ?? "";
+    if (version.text === now) {
+      $("history-summary").textContent = "The same as what you have now.";
+      return;
+    }
+    const changes = lineChanges(now, version.text);
+    // The empty piece after a file's last line break isn't a line anyone wrote.
+    const count = kind => changes.filter(c => c.kind === kind && c.text !== "").length;
+    const gone = count("gone");
+    const back = count("back");
+    $("history-summary").textContent = project.files[history.name] === undefined
+      ? `Restoring brings the file back, ${back} lines.`
+      : `Restoring takes out ${gone} lines (−) and brings back ${back} (+). You can undo it.`;
+    showChanges(changes);
+    $("history-restore").hidden = false;
+  } catch (e) {
+    $("history-summary").textContent = e.message;
+  }
+}
+
+$("history-close").onclick = () => $("history-dialog").close();
+$("history-restore").onclick = () => {
+  const { name, chosen } = history;
+  const { text } = history.cache.get(chosen.sha);
+  $("history-dialog").close();
+  if (project.files[name] === undefined) {
+    // Deleted here and not yet synced: GitHub still has it, so this is an edit to it.
+    if (project.deleted[name]) project.synced[name] = { sha: project.deleted[name], text: null };
+    delete project.deleted[name];
+    delete project.removed[name];
+    project.files[name] = text;
+    fillFileSelect();
+    showFile(name);
+    compile();
+    return;
+  }
+  // Over all of it as typing would be, so that undo brings the words back.
+  showPane("script");
+  if (name !== project.current) showFile(name);
+  source.focus({ preventScroll: true });
+  source.select();
+  insertText(text);
+  source.setSelectionRange(0, 0);
+  source.scrollTop = 0;
+  showCaret();
+};
+
 /* ---------- Begin ---------- */
 
 showFile(project.current);
@@ -1299,7 +1588,7 @@ applyLayout();
 compile();
 applyLayout();
 showSyncState();
-if (github.token && navigator.onLine) sync().catch(() => {});
+if (github.token && navigator.onLine) sync({ auto: true });
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js").catch(() => {});
