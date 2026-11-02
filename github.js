@@ -79,4 +79,11 @@ export class GitHub {
     if (!res.ok) throw new Error(`GitHub answered ${res.status} saving ${name}.`);
     return (await res.json()).content.sha;
   }
+
+  // sha as in write: a file changed since then isn't removed, it's a Conflict.
+  async remove(name, sha) {
+    const body = { message: `Story: ${name} removed (Suratan)`, sha, branch: this.branch };
+    const res = await this.call(`${this.dir}/${encodeURIComponent(name)}`, { method: "DELETE", body: JSON.stringify(body) });
+    if (!res.ok && res.status !== 404) throw new Error(`GitHub answered ${res.status} removing ${name}.`);
+  }
 }

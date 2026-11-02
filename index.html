@@ -21,6 +21,7 @@
   <strong class="brand">Suratan</strong>
   <select id="file-select" aria-label="File"></select>
   <button id="new-file" class="quiet" title="New file" aria-label="New file">+</button>
+  <button id="file-menu" class="quiet" title="Rename or delete this file" aria-label="Rename or delete this file">⋯</button>
   <span class="grow"></span>
   <span id="sync-state" class="sync-state" role="status"></span>
   <button id="sync">Sync</button>
@@ -29,9 +30,14 @@
 
 <main id="panes">
   <section class="pane" data-pane="script" aria-label="Script">
-    <div class="editor">
+    <div class="bar script-bar">
+      <button id="scene-open" title="Find a scene or words (⌘K)"></button>
+      <button id="jump-back" title="Back to where you jumped from" aria-label="Back to where you jumped from" hidden>←</button>
+      <span class="grow"></span>
+      <button id="jump-go" hidden></button>
+    </div>
+    <div id="editor" class="editor">
       <div id="backdrop" class="backdrop" aria-hidden="true"></div>
-      <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Ink script"></textarea>
     </div>
     <ul id="issues" class="issues"></ul>
   </section>
@@ -80,6 +86,26 @@
   <button data-tab="play">Play</button>
   <button data-tab="check">Check</button>
 </nav>
+
+<dialog id="scene-dialog" class="scene-dialog" aria-label="Find a scene or words">
+  <input id="scene-search" type="search" placeholder="Find a scene or words" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Find a scene or words">
+  <div id="scene-list" class="scene-list"></div>
+</dialog>
+
+<dialog id="file-dialog">
+  <h2 id="file-title"></h2>
+  <p id="file-locked" class="muted" hidden>The story starts from main.ink, so it keeps its name and can't be deleted.</p>
+  <div id="file-actions">
+    <label>New name <input id="file-name" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <p id="file-message" class="message" role="status"></p>
+  </div>
+  <div class="row">
+    <button type="button" id="file-delete" class="danger">Delete</button>
+    <span class="grow"></span>
+    <button type="button" id="file-close" class="quiet">Close</button>
+    <button type="button" id="file-rename" class="primary">Rename</button>
+  </div>
+</dialog>
 
 <dialog id="settings-dialog">
   <form method="dialog" id="settings-form">

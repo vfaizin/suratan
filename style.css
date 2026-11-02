@@ -90,8 +90,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   min-width: 0;
 }
 .brand { font-family: var(--serif); font-size: 18px; }
-#file-select { min-width: 0; max-width: 34vw; }
-.sync-state { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#file-select { flex: 0 1 auto; min-width: 7.5em; max-width: 46vw; }
+.sync-state { flex: 0 100 auto; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sync-state.dirty { color: var(--warn); }
 .sync-state.bad { color: var(--bad); }
 
@@ -120,7 +120,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 /* The editor: a transparent textarea over a coloured copy of its text. Both
    need identical font, padding and wrapping or the caret drifts from the words. */
 .editor { position: relative; flex: 1 1 auto; min-height: 0; background: var(--surface); }
-.backdrop, #source {
+.backdrop, .source {
   position: absolute;
   inset: 0;
   margin: 0;
@@ -136,7 +136,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .backdrop { overflow: hidden; pointer-events: none; color: var(--text); }
 .backdrop > div { min-height: 1.5em; }
-#source {
+.source {
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -148,6 +148,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   -webkit-text-fill-color: transparent;
   caret-color: var(--text);
 }
+.source.off { visibility: hidden; }
+.backdrop .flash { animation: flash 1.4s ease-out; }
+@keyframes flash { from { background: var(--accent-soft); } }
 .backdrop .err { background: var(--bad-soft); }
 .backdrop .warn { background: var(--warn-soft); }
 .syn-knot { color: var(--syn-knot); font-weight: 700; }
@@ -155,6 +158,24 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .syn-choice { color: var(--syn-choice); }
 .syn-logic { color: var(--syn-logic); }
 .syn-comment { color: var(--syn-comment); }
+
+.script-bar { flex-wrap: nowrap; padding: 4px 8px; background: var(--surface); }
+.script-bar button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+#scene-open { max-width: 55%; }
+#jump-go { color: var(--syn-divert); font-weight: 600; }
+button.danger { color: var(--bad); }
+
+.scene-dialog { width: min(560px, 94vw); max-height: 76dvh; margin-top: max(6dvh, env(safe-area-inset-top)); padding: 0; overflow: hidden; }
+.scene-dialog[open] { display: flex; flex-direction: column; }
+#scene-search { flex: none; width: 100%; font-size: 16px; min-height: 46px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 8px 14px; outline: 0; background: var(--surface); }
+.scene-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 8px; }
+.scene-list h3 { margin: 10px 14px 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.scene-list p { margin: 14px; }
+.found { display: flex; width: 100%; align-items: baseline; gap: 12px; justify-content: space-between; text-align: left; border: 0; border-radius: 0; background: transparent; min-height: 40px; padding: 6px 14px; }
+.found-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.found-place { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.found.here .found-title { font-weight: 700; }
+.found.active { background: var(--accent-soft); }
 
 .issues { list-style: none; margin: 0; padding: 0; max-height: 28%; overflow: auto; border-top: 1px solid var(--line); font-size: 13px; }
 .issues:empty { display: none; }
@@ -238,5 +259,8 @@ dialog label input { display: block; width: 100%; font-size: 16px; color: var(--
 
 @media (max-width: 480px) {
   .brand { display: none; }
-  #file-select { max-width: 42vw; }
+  #file-select { min-width: 6em; max-width: 40vw; }
+  .top { gap: 4px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+  .top button.quiet { padding: 4px 7px; }
+  .sync-state { font-size: 12px; }
 }

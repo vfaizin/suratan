@@ -13,7 +13,7 @@ read and write, that repository only), kept on the device and sent only to
 api.github.com.
 
 ## Files
-- `app.js`: the project, and the script, play, check and sync panes
+- `app.js`: the project; the script (one editor per file, so each keeps its undo), find, play, check and sync panes
 - `parse.js`: a light scan of the source for scenes, jumps and variables
 - `graph.js`: draws the scan; pan, pinch and drag a scene (its place stays on this device, not in the story)
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page

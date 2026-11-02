@@ -20,8 +20,11 @@ function saveJson(key, value) {
 }
 
 // files: name -> text now. synced: name -> { sha, text } as of the last sync.
+// deleted: name -> sha of a synced file deleted here, for the next sync to remove.
+// syncedFrom: the repository, branch and folder that `synced` describes.
 const project = loadJson("suratan:project", null) || { files: { [MAIN]: SAMPLE }, synced: {}, current: MAIN };
-if (!project.files[project.current]) project.current = Object.keys(project.files)[0];
+project.deleted ||= {};
+if (project.files[project.current] === undefined) project.current = Object.keys(project.files)[0];
 const github = loadJson("suratan:github", { repo: "vfaizin/kias", branch: "main", dir: "assets/story", token: "" });
 let saveFailed = false;
 
@@ -78,6 +81,8 @@ function compile() {
   if (changed && player.story) $("play-stale").hidden = false;
   if (changed) { graph.setOverlay({ unreached: new Set(), deadends: new Set() }); }
   if (!player.story && json) player.start();
+  refreshCard();
+  showCaret();
 }
 
 function scheduleCompile() {
@@ -87,8 +92,63 @@ function scheduleCompile() {
 
 /* ---------- Script pane ---------- */
 
-const source = $("source");
 const backdrop = $("backdrop");
+
+// One textarea per file, because a textarea's undo history is lost when its text is
+// replaced. Only the current one shows; the rest stay laid out so they keep their scroll.
+const editors = new Map();
+let source = editorFor(project.current);
+
+function editorFor(name) {
+  let ed = editors.get(name);
+  if (ed) return ed;
+  ed = document.createElement("textarea");
+  ed.className = "source off";
+  ed.spellcheck = false;
+  ed.setAttribute("autocapitalize", "off");
+  ed.setAttribute("autocomplete", "off");
+  ed.setAttribute("autocorrect", "off");
+  ed.setAttribute("aria-label", `Ink script: ${name}`);
+  ed.value = project.files[name] ?? "";
+  ed.setSelectionRange(0, 0); // a filled textarea's caret starts at the end
+  ed.addEventListener("input", () => {
+    project.files[project.current] = ed.value; // only the one showing can be typed in, and a rename can change its name
+    paintBackdrop();
+    persist();
+    showCaret();
+    scheduleCompile();
+  });
+  ed.addEventListener("scroll", () => { backdrop.scrollTop = ed.scrollTop; }, { passive: true });
+  ed.addEventListener("keydown", e => {
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    insertText("    ");
+  });
+  $("editor").append(ed);
+  editors.set(name, ed);
+  return ed;
+}
+
+// Bring the editors in line with the files after something other than typing changed
+// them. Only a file whose words differ loses its undo.
+function syncEditors() {
+  for (const [name, ed] of editors) {
+    if (project.files[name] === undefined) { ed.remove(); editors.delete(name); }
+    else if (ed.value !== project.files[name]) ed.value = project.files[name];
+  }
+  if (project.files[project.current] === undefined) project.current = MAIN in project.files ? MAIN : Object.keys(project.files)[0];
+  showFile(project.current);
+}
+
+// At the caret, as typing would, so it can be undone. execCommand is deprecated but is
+// the only way that keeps the undo history; the fallback loses it.
+function insertText(text) {
+  source.focus({ preventScroll: true });
+  if (!document.execCommand("insertText", false, text)) {
+    source.setRangeText(text, source.selectionStart, source.selectionEnd, "end");
+    source.dispatchEvent(new Event("input"));
+  }
+}
 
 function esc(s) { return s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 
@@ -124,10 +184,13 @@ function paintBackdrop() {
 
 function showFile(name) {
   project.current = name;
-  source.value = project.files[name] ?? "";
+  source.classList.add("off");
+  source = editorFor(name);
+  source.classList.remove("off");
   paintBackdrop();
   fillFileSelect();
   persist();
+  showCaret();
 }
 
 function fillFileSelect() {
@@ -136,18 +199,244 @@ function fillFileSelect() {
     .map(n => new Option(n, n, false, n === project.current)));
 }
 
-function goToLine(file, line) {
-  showPane("script");
+// select: take the whole line, ready to type over. focus: on a phone that opens the
+// keyboard, which hides what you came to read, so reading jumps there leave it shut.
+function goToLine(file, line, { select = false, focus = layoutMode() !== "narrow", pane = true } = {}) {
+  if (pane) showPane("script");
   if (file !== project.current && project.files[file] !== undefined) showFile(file);
   const lines = source.value.split("\n");
   let offset = 0;
   for (let i = 0; i < line - 1 && i < lines.length; i++) offset += lines[i].length + 1;
-  source.focus({ preventScroll: true });
-  source.setSelectionRange(offset, offset + (lines[line - 1]?.length ?? 0));
+  if (focus || select) source.focus({ preventScroll: true });
+  source.setSelectionRange(offset, offset + (select ? lines[line - 1]?.length ?? 0 : 0));
   const row = backdrop.children[line - 1];
-  if (row) source.scrollTop = Math.max(0, row.offsetTop - source.clientHeight / 3);
+  if (row) {
+    source.scrollTop = Math.max(0, row.offsetTop - source.clientHeight / 3);
+    row.classList.remove("flash");
+    void row.offsetWidth; // so the animation starts again on a second jump to it
+    row.classList.add("flash");
+  }
   backdrop.scrollTop = source.scrollTop;
+  showCaret();
 }
+
+/* ---------- Where the caret is: the scene it's in, and any jump on its line ---------- */
+
+const TARGET = /(?:->|<-)\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/g;
+let caretScene = null;
+let trail = []; // where jumps came from: { file, offset }
+
+function sceneAt(file, line) {
+  let knot = file === MAIN ? compiled.scan.knots[0] : null;
+  for (const k of compiled.scan.knots) {
+    if (!k.isRoot && k.file === file && k.line <= line && (!knot || knot.isRoot || k.line >= knot.line)) knot = k;
+  }
+  const stitch = knot?.stitches.filter(s => s.line <= line).at(-1) ?? null;
+  return { knot, stitch };
+}
+
+function caretLine() {
+  const before = source.value.slice(0, source.selectionStart);
+  const start = before.lastIndexOf("\n") + 1;
+  const end = source.value.indexOf("\n", start);
+  return {
+    number: before.split("\n").length,
+    text: source.value.slice(start, end < 0 ? undefined : end),
+    column: source.selectionStart - start,
+  };
+}
+
+// The place a target names, from inside a scene: a knot, knot.stitch, or a stitch here.
+function findPlace(target, from) {
+  const [first, second] = target.split(".");
+  const knots = compiled.scan.knots;
+  const knot = knots.find(k => k.name === first && !k.isRoot);
+  if (knot && !second) return { file: knot.file, line: knot.line };
+  const stitch = (second ? knot : from)?.stitches.find(s => s.name === (second ?? first));
+  return stitch ? { file: (second ? knot : from).file, line: stitch.line } : null;
+}
+
+function jumpOnLine(line, from) {
+  const text = line.text.split("//")[0];
+  const found = [...text.matchAll(TARGET)]
+    .filter(m => m[1] !== "END" && m[1] !== "DONE")
+    .map(m => ({ target: m[1], start: m.index, end: m.index + m[0].length }));
+  if (!found.length) return null;
+  const jump = found.find(f => line.column >= f.start && line.column <= f.end) ?? found[0];
+  const place = findPlace(jump.target, from);
+  if (place) return { ...jump, place };
+  // A name the scan doesn't know can be a label or a variable holding a place, so only
+  // offer to create it when the compiler has said this line's target doesn't exist.
+  const missing = !jump.target.includes(".") && compiled.issues.some(i =>
+    i.level === "error" && i.file === project.current && i.line === line.number && i.text.includes(jump.target));
+  return missing ? { ...jump, missing: true } : null;
+}
+
+function showCaret() {
+  const line = caretLine();
+  const { knot, stitch } = sceneAt(project.current, line.number);
+  $("scene-open").textContent = `☰ ${knot ? (stitch ? `${knot.name}.${stitch.name}` : knot.name) : project.current}`;
+
+  const go = $("jump-go");
+  const jump = jumpOnLine(line, knot);
+  go.hidden = !jump;
+  if (jump) go.textContent = jump.missing ? `+ Create ${jump.target}` : `→ ${jump.target}`;
+  go.onclick = !jump ? null : () => {
+    if (jump.missing) createScene(jump.target);
+    else { leaveTrail(); goToLine(jump.place.file, jump.place.line); }
+  };
+  $("jump-back").hidden = !trail.length;
+
+  const name = knot?.name ?? null;
+  if (name !== caretScene) {
+    caretScene = name;
+    if (!$("graph-card").hidden && graph.selected !== name) $("graph-card").hidden = true;
+    graph.setSelected(name);
+    graph.reveal(name);
+  }
+}
+document.addEventListener("selectionchange", () => {
+  if (document.activeElement === source) showCaret();
+});
+
+function leaveTrail() {
+  trail.push({ file: project.current, offset: source.selectionStart });
+  if (trail.length > 50) trail.shift();
+}
+
+$("jump-back").onclick = () => {
+  const { file, offset } = trail.pop();
+  if (project.files[file] === undefined) { showCaret(); return; }
+  const line = project.files[file].slice(0, offset).split("\n").length;
+  goToLine(file, line);
+  source.setSelectionRange(offset, offset);
+  showCaret();
+};
+
+// At the end of this file. The jump to END lets it be played at once, and it's undoable.
+function createScene(name) {
+  leaveTrail();
+  source.setSelectionRange(source.value.length, source.value.length);
+  const gap = source.value.endsWith("\n\n") || !source.value ? "" : source.value.endsWith("\n") ? "\n" : "\n\n";
+  insertText(`${gap}=== ${name} ===\n// TODO: write this scene\n-> END\n`);
+  clearTimeout(scheduleCompile.timer);
+  compile();
+  const k = compiled.scan.knots.find(x => x.name === name);
+  goToLine(k.file, k.line + 1, { select: true });
+}
+
+/* ---------- Find: scenes, then the words of every file ---------- */
+
+const MAX_FOUND = 40;
+let foundRows = [];
+let foundIndex = 0;
+
+function openFind() {
+  $("scene-search").value = "";
+  showFound();
+  $("scene-dialog").showModal();
+  $("scene-search").focus();
+}
+
+function foundRow(title, place, target, isCurrent) {
+  const b = document.createElement("button");
+  b.className = `found${isCurrent ? " here" : ""}`;
+  const t = document.createElement("span");
+  t.className = "found-title";
+  t.textContent = title;
+  const p = document.createElement("span");
+  p.className = "found-place";
+  p.textContent = place;
+  b.append(t, p);
+  b.tabIndex = -1;
+  b.onclick = () => {
+    $("scene-dialog").close();
+    leaveTrail();
+    goToLine(target.file, target.line);
+  };
+  return b;
+}
+
+function showFound() {
+  const q = $("scene-search").value.trim().toLowerCase();
+  const list = $("scene-list");
+  const rows = [];
+  const scenes = [];
+  for (const k of compiled.scan.knots) {
+    if (k.isRoot) continue;
+    const where = `${k.isFunction ? "function · " : ""}${k.file}:${k.line}`;
+    if (!q || k.name.toLowerCase().includes(q)) scenes.push(foundRow(k.name, where, k, k.name === caretScene));
+    for (const s of k.stitches) {
+      const full = `${k.name}.${s.name}`;
+      if (!q || full.toLowerCase().includes(q)) scenes.push(foundRow(full, `${k.file}:${s.line}`, { file: k.file, line: s.line }, false));
+    }
+  }
+  rows.push(...scenes);
+
+  const words = [];
+  let wordsTotal = 0;
+  if (q.length >= 2) {
+    for (const [file, text] of Object.entries(project.files)) {
+      text.split("\n").forEach((raw, i) => {
+        if (!raw.toLowerCase().includes(q)) return;
+        wordsTotal++;
+        if (words.length >= MAX_FOUND) return;
+        const { knot } = sceneAt(file, i + 1);
+        words.push(foundRow(raw.trim(), `${knot?.name ?? file} · ${file}:${i + 1}`, { file, line: i + 1 }, false));
+      });
+    }
+  }
+
+  const parts = [];
+  const heading = text => {
+    const h = document.createElement("h3");
+    h.textContent = text;
+    return h;
+  };
+  if (scenes.length && q) parts.push(heading("Scenes"));
+  parts.push(...scenes);
+  if (words.length) parts.push(heading(wordsTotal > words.length ? `In the words: first ${words.length} of ${wordsTotal}` : "In the words"), ...words);
+  if (!scenes.length && !words.length) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = q ? "Nothing found." : "No scenes yet.";
+    parts.push(p);
+  }
+  list.replaceChildren(...parts);
+  foundRows = [...scenes, ...words];
+  const current = q ? -1 : foundRows.findIndex(r => r.classList.contains("here"));
+  markFound(Math.max(0, current));
+}
+
+function markFound(i) {
+  foundRows[foundIndex]?.classList.remove("active");
+  foundIndex = i;
+  const row = foundRows[i];
+  if (!row) return;
+  row.classList.add("active");
+  row.scrollIntoView({ block: "nearest" });
+}
+
+$("scene-open").onclick = openFind;
+$("scene-search").addEventListener("input", showFound);
+$("scene-search").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (foundRows.length) markFound((foundIndex + (e.key === "ArrowDown" ? 1 : foundRows.length - 1)) % foundRows.length);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    foundRows[foundIndex]?.click();
+  }
+});
+$("scene-dialog").addEventListener("click", e => {
+  if (e.target === $("scene-dialog")) $("scene-dialog").close();
+});
+addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if (!$("scene-dialog").open) openFind();
+  }
+});
 
 function showIssues() {
   paintBackdrop();
@@ -164,20 +453,6 @@ function showIssues() {
   }));
 }
 
-source.addEventListener("input", () => {
-  project.files[project.current] = source.value;
-  paintBackdrop();
-  persist();
-  scheduleCompile();
-});
-source.addEventListener("scroll", () => { backdrop.scrollTop = source.scrollTop; }, { passive: true });
-source.addEventListener("keydown", e => {
-  if (e.key !== "Tab") return;
-  e.preventDefault();
-  source.setRangeText("    ", source.selectionStart, source.selectionEnd, "end");
-  source.dispatchEvent(new Event("input"));
-});
-
 $("file-select").onchange = e => showFile(e.target.value);
 $("new-file").onclick = () => {
   let name = prompt("File name, for example town.ink");
@@ -191,58 +466,131 @@ $("new-file").onclick = () => {
   compile();
 };
 
+// A synced file is removed from GitHub at the next sync. Its history stays there.
+function forgetFile(name) {
+  if (project.synced[name]) project.deleted[name] = project.synced[name].sha;
+  delete project.synced[name];
+  delete project.files[name];
+}
+
+function renameFile(from, to) {
+  project.files[to] = project.files[from];
+  forgetFile(from);
+  const include = new RegExp(`^(\\s*INCLUDE\\s+)${from.replace(/[.]/g, "\\.")}(\\s*)$`, "m");
+  for (const [name, text] of Object.entries(project.files)) project.files[name] = text.replace(include, `$1${to}$2`);
+  // Its editor, with its undo, goes with it.
+  const ed = editors.get(from);
+  if (ed) { editors.delete(from); editors.set(to, ed); }
+  if (project.current === from) project.current = to;
+  for (const step of trail) if (step.file === from) step.file = to;
+}
+
+$("file-menu").onclick = () => {
+  const locked = project.current === MAIN;
+  $("file-title").textContent = project.current;
+  $("file-locked").hidden = !locked;
+  $("file-actions").hidden = locked;
+  $("file-delete").hidden = locked;
+  $("file-rename").hidden = locked;
+  $("file-name").value = project.current;
+  $("file-message").textContent = "";
+  $("file-dialog").showModal();
+};
+$("file-close").onclick = () => $("file-dialog").close();
+$("file-rename").onclick = () => {
+  const from = project.current;
+  let to = $("file-name").value.trim();
+  if (!to.endsWith(".ink")) to += ".ink";
+  const msg = $("file-message");
+  msg.className = "message bad";
+  if (!/^[\w.-]+$/.test(to)) { msg.textContent = "Use letters, numbers, dots, dashes and underscores."; return; }
+  if (to !== from && to in project.files) { msg.textContent = `There's already a ${to}.`; return; }
+  $("file-dialog").close();
+  if (to === from) return;
+  renameFile(from, to);
+  syncEditors();
+  compile();
+};
+$("file-delete").onclick = () => {
+  const name = project.current;
+  const onGitHub = !!project.synced[name];
+  const others = Object.keys(project.files).filter(n => new RegExp(`^\\s*INCLUDE\\s+${name.replace(/[.]/g, "\\.")}\\s*$`, "m").test(project.files[n]));
+  const warn = others.length ? ` ${others.join(", ")} still includes it, which will be an error until you take that line out.` : "";
+  const end = onGitHub ? "It stays in GitHub's history." : "It has never been synced, so it can't be got back.";
+  if (!confirm(`Delete ${name}? ${end}${warn}`)) return;
+  $("file-dialog").close();
+  forgetFile(name);
+  syncEditors();
+  compile();
+};
+
 /* ---------- Graph pane ---------- */
 
 const graph = new Graph($("graph"), {
   moved: loadJson("suratan:graph-moved", {}),
   onMoved(moved) { saveJson("suratan:graph-moved", moved); },
   onSelect(name) {
+    // With the script beside it, the script follows. The keyboard's focus stays put.
+    // First, because moving the caret to another scene closes the card.
+    const k = name && compiled.scan.knots.find(x => x.name === name);
+    if (k && !k.isRoot && layoutMode() !== "narrow") goToLine(k.file, k.line, { focus: false, pane: false });
     graph.setSelected(name);
-    const card = $("graph-card");
-    if (!name) { card.hidden = true; return; }
-    const k = compiled.scan.knots.find(x => x.name === name);
-    if (!k) { card.hidden = true; return; }
-    const out = compiled.scan.edges.filter(e => e.from === name);
-    const into = compiled.scan.edges.filter(e => e.to === name);
-
-    card.replaceChildren();
-    const h = document.createElement("h3");
-    h.textContent = name;
-    const sub = document.createElement("div");
-    sub.className = "muted";
-    sub.textContent = `${k.file}:${k.line} · from ${new Set(into.map(e => e.from)).size} · to ${new Set(out.map(e => e.to)).size}`;
-    card.append(h, sub);
-    if (k.stitches.length) {
-      const s = document.createElement("div");
-      s.className = "muted";
-      s.textContent = "Stitches: " + k.stitches.map(x => x.name).join(", ");
-      card.append(s);
-    }
-    if (out.length) {
-      const ul = document.createElement("ul");
-      for (const e of out) {
-        const li = document.createElement("li");
-        li.textContent = `${e.label || "(goes on)"} → ${e.to}${e.conditional ? " (if)" : ""}`;
-        ul.append(li);
-      }
-      card.append(ul);
-    }
-    const row = document.createElement("div");
-    row.className = "row wrap";
-    const open = document.createElement("button");
-    open.textContent = "Open script";
-    open.onclick = () => goToLine(k.file, k.line);
-    row.append(open);
-    if (!k.isRoot) {
-      const play = document.createElement("button");
-      play.textContent = "Play from here";
-      play.onclick = () => { showPane("play"); player.start(name); };
-      row.append(play);
-    }
-    card.append(row);
-    card.hidden = false;
+    showCard(name);
   },
 });
+
+// The scene's card. Everything on it is read from the scan, so it's made again whenever
+// the scan changes.
+function refreshCard() {
+  if ($("graph-card").hidden) return;
+  showCard(graph.selected);
+}
+
+function showCard(name) {
+  const card = $("graph-card");
+  if (!name) { card.hidden = true; return; }
+  const k = compiled.scan.knots.find(x => x.name === name);
+  if (!k) { card.hidden = true; return; }
+  const out = compiled.scan.edges.filter(e => e.from === name);
+  const into = compiled.scan.edges.filter(e => e.to === name);
+
+  card.replaceChildren();
+  const h = document.createElement("h3");
+  h.textContent = name;
+  const sub = document.createElement("div");
+  sub.className = "muted";
+  sub.textContent = `${k.file}:${k.line} · from ${new Set(into.map(e => e.from)).size} · to ${new Set(out.map(e => e.to)).size}`;
+  card.append(h, sub);
+  if (k.stitches.length) {
+    const s = document.createElement("div");
+    s.className = "muted";
+    s.textContent = "Stitches: " + k.stitches.map(x => x.name).join(", ");
+    card.append(s);
+  }
+  if (out.length) {
+    const ul = document.createElement("ul");
+    for (const e of out) {
+      const li = document.createElement("li");
+      li.textContent = `${e.label || "(goes on)"} → ${e.to}${e.conditional ? " (if)" : ""}`;
+      ul.append(li);
+    }
+    card.append(ul);
+  }
+  const row = document.createElement("div");
+  row.className = "row wrap";
+  const open = document.createElement("button");
+  open.textContent = "Open script";
+  open.onclick = () => goToLine(k.file, k.line);
+  row.append(open);
+  if (!k.isRoot) {
+    const play = document.createElement("button");
+    play.textContent = "Play from here";
+    play.onclick = () => { showPane("play"); player.start(name); };
+    row.append(play);
+  }
+  card.append(row);
+  card.hidden = false;
+}
 
 $("graph-fit").onclick = () => graph.fit();
 $("graph-tidy").onclick = () => {
@@ -689,8 +1037,14 @@ function applyLayout() {
     b.classList.toggle("hide", (mode === "wide" && (t === "script" || t === "graph")) || (mode === "medium" && t === "script"));
     b.classList.toggle("active", shown.includes(t));
   }
-  if (shown.includes("graph") && !graph.hasFit) requestAnimationFrame(() => graph.fit());
+  if (shown.includes("graph")) {
+    requestAnimationFrame(() => {
+      if (!graph.hasFit) graph.fit();
+      graph.reveal(graph.selected);
+    });
+  }
   if (shown.includes("script")) paintBackdrop();
+  showSyncState();
 }
 
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => showPane(b.dataset.tab);
@@ -702,7 +1056,7 @@ let syncing = false;
 let syncError = "";
 
 function dirtyCount() {
-  return Object.keys(project.files).filter(n => project.files[n] !== project.synced[n]?.text).length;
+  return Object.keys(project.files).filter(n => project.files[n] !== project.synced[n]?.text).length + Object.keys(project.deleted).length;
 }
 
 function showSyncState() {
@@ -719,7 +1073,9 @@ function showSyncState() {
     el.title = syncError;
     el.classList.add("bad");
   } else if (!github.token) {
-    el.textContent = "On this device only";
+    // A phone's header has room for about ten letters.
+    el.textContent = layoutMode() === "narrow" ? "Local only" : "On this device only";
+    el.title = "On this device only: connect GitHub in settings to sync";
     el.classList.add("dirty");
   } else if (dirty) {
     el.textContent = `${dirty} not synced`;
@@ -767,7 +1123,22 @@ async function sync() {
   $("sync").disabled = true;
   const gh = new GitHub(github);
   try {
+    // What's known about the last sync says nothing about a different place.
+    const place = `${github.repo}/${github.branch}/${github.dir}`;
+    if (project.syncedFrom && project.syncedFrom !== place) { project.synced = {}; project.deleted = {}; }
+    project.syncedFrom = place;
+
     const remote = await gh.list();
+    // Deleted here. If GitHub's copy has changed since, those words are news: keep them,
+    // so nothing is lost, and the loop below brings the file back.
+    for (const [name, sha] of Object.entries(project.deleted)) {
+      if (remote[name] === sha && project.files[name] === undefined) {
+        try { await gh.remove(name, sha); delete remote[name]; }
+        catch (e) { if (!(e instanceof Conflict)) throw e; }
+      }
+      delete project.deleted[name];
+    }
+    const removedElsewhere = Object.keys(remote).length > 0; // an empty list can mean the folder moved
     for (const [name, sha] of Object.entries(remote)) {
       const local = project.files[name];
       const base = project.synced[name];
@@ -803,10 +1174,16 @@ async function sync() {
     for (const name of Object.keys(project.files)) {
       if (remote[name] !== undefined) continue;
       const text = project.files[name];
+      // Synced before and gone now: another device deleted it. Unless this device has
+      // changed it since, in which case those words go back up.
+      if (removedElsewhere && name !== MAIN && project.synced[name]?.text === text) {
+        delete project.files[name];
+        delete project.synced[name];
+        continue;
+      }
       project.synced[name] = { sha: await gh.write(name, text, null), text };
     }
-    source.value = project.files[project.current] ?? "";
-    fillFileSelect();
+    syncEditors();
     compile();
   } catch (e) {
     syncError = e.message;
@@ -860,8 +1237,7 @@ $("sync").onclick = () => sync().catch(() => {});
 
 /* ---------- Begin ---------- */
 
-fillFileSelect();
-source.value = project.files[project.current] ?? "";
+showFile(project.current);
 applyLayout();
 compile();
 applyLayout();

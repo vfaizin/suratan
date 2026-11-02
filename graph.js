@@ -255,6 +255,20 @@ export class Graph {
     this.apply();
   }
 
+  // Brings a scene into view if it's outside it, leaving the zoom alone.
+  reveal(name) {
+    const p = this.pos?.get(name);
+    if (!p || this.pointers.size) return;
+    const r = this.svg.getBoundingClientRect();
+    if (r.width < 10 || r.height < 10) return; // hidden pane
+    const { x, y, k } = this.view;
+    const left = x + p.x * k, top = y + p.y * k;
+    if (left >= 0 && top >= 0 && left + NODE_W * k <= r.width && top + p.h * k <= r.height) return;
+    this.view.x = r.width / 2 - (p.x + NODE_W / 2) * k;
+    this.view.y = r.height / 2 - (p.y + p.h / 2) * k;
+    this.apply();
+  }
+
   // Every scene back in its column.
   tidy() {
     this.moved.clear();
