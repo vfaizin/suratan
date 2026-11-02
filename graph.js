@@ -322,7 +322,8 @@ export class Graph {
   fit() {
     const r = this.area();
     if (r.width < 10 || r.height < 10) return; // hidden pane: fit when it shows
-    if (this.wholeZoom(r) >= READABLE) { this.fitAll(); return; }
+    // A little under readable is worth it to see the whole story at once.
+    if (this.wholeZoom(r) >= READABLE - 0.1) { this.fitAll(); return; }
     const anchor = this.pos?.get(this.shownFocus() ?? this.selected ?? ROOT);
     if (!anchor) { this.fitAll(); return; }
     const k = READABLE;
