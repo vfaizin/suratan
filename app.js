@@ -3,6 +3,7 @@
 import { scan, reachablePaths } from "./parse.js";
 import { Graph } from "./graph.js";
 import { Board, PLAN } from "./plan.js";
+import { Notes, noteTitle } from "./notes.js";
 import { GitHub, Conflict } from "./github.js";
 import { SAMPLE } from "./sample.js";
 
@@ -26,6 +27,7 @@ function saveJson(key, value) {
 const project = loadJson("suratan:project", null) || { files: { [MAIN]: SAMPLE }, synced: {}, current: MAIN };
 project.deleted ||= {};
 project.removed ||= {}; // name -> when it was deleted or renamed here, to find its history by
+project.notes ||= { files: {}, synced: {}, deleted: {}, current: null }; // the same shape, for the Notes tab
 if (project.files[project.current] === undefined) project.current = Object.keys(project.files)[0];
 const github = loadJson("suratan:github", { repo: "vfaizin/kias", branch: "main", dir: "assets/story", token: "" });
 github.auto ??= true;
@@ -365,6 +367,11 @@ function foundRow(title, place, target, isCurrent) {
   b.tabIndex = -1;
   b.onclick = () => {
     $("scene-dialog").close();
+    if (target.note) {
+      showPane("notes");
+      notes.openAt(target.note, target.line);
+      return;
+    }
     leaveTrail();
     goToLine(target.file, target.line);
   };
@@ -401,6 +408,23 @@ function showFound() {
     }
   }
 
+  const inNotes = [];
+  let notesTotal = 0;
+  if (q.length >= 2) {
+    for (const [file, text] of Object.entries(project.notes.files)) {
+      const title = noteTitle(file);
+      if (title.toLowerCase().includes(q)) {
+        notesTotal++;
+        if (inNotes.length < MAX_FOUND) inNotes.push(foundRow(title, "page", { note: file, line: 1 }, false));
+      }
+      text.split("\n").forEach((raw, i) => {
+        if (!raw.toLowerCase().includes(q)) return;
+        notesTotal++;
+        if (inNotes.length < MAX_FOUND) inNotes.push(foundRow(raw.trim(), `${title}:${i + 1}`, { note: file, line: i + 1 }, false));
+      });
+    }
+  }
+
   const parts = [];
   const heading = text => {
     const h = document.createElement("h3");
@@ -410,14 +434,15 @@ function showFound() {
   if (scenes.length && q) parts.push(heading("Scenes"));
   parts.push(...scenes);
   if (words.length) parts.push(heading(wordsTotal > words.length ? `In the words: first ${words.length} of ${wordsTotal}` : "In the words"), ...words);
-  if (!scenes.length && !words.length) {
+  if (inNotes.length) parts.push(heading(notesTotal > inNotes.length ? `In your notes: first ${inNotes.length} of ${notesTotal}` : "In your notes"), ...inNotes);
+  if (!scenes.length && !words.length && !inNotes.length) {
     const p = document.createElement("p");
     p.className = "muted";
     p.textContent = q ? "Nothing found." : "No scenes yet.";
     parts.push(p);
   }
   list.replaceChildren(...parts);
-  foundRows = [...scenes, ...words];
+  foundRows = [...scenes, ...words, ...inNotes];
   const current = q ? -1 : foundRows.findIndex(r => r.classList.contains("here"));
   markFound(Math.max(0, current));
 }
@@ -579,6 +604,13 @@ const board = new Board({
     if (project.current !== MAIN && !compiled.scan.includes.has(project.current)) showFile(MAIN);
     createScene(name, words || undefined);
   },
+});
+
+/* ---------- Notes pane ---------- */
+
+const notes = new Notes(project.notes, {
+  saved: () => persist(),
+  narrow: () => layoutMode() === "narrow",
 });
 
 /* ---------- Graph pane ---------- */
@@ -1130,16 +1162,19 @@ function layoutMode() {
 function showPane(name) {
   const mode = layoutMode();
   if (mode === "narrow") phonePane = name;
-  else if (mode === "wide" && name === "graph") { if (tabbed === "plan") tabbed = "play"; }
-  else if (name !== "script") tabbed = name;
+  else if (name === "script") { if (tabbed === "notes") tabbed = "play"; }
+  else if (mode === "wide" && name === "graph") { if (tabbed === "plan" || tabbed === "notes") tabbed = "play"; }
+  else tabbed = name;
   applyLayout();
 }
 
 function applyLayout() {
   const mode = layoutMode();
   let shown;
-  // The board needs the room, so on wide it takes the graph's place as well as its own.
-  if (mode === "wide") shown = tabbed === "plan" ? ["script", "plan"] : ["script", "graph", tabbed === "graph" ? "play" : tabbed];
+  // Notes are for thinking, so they have the window to themselves. The board needs the
+  // room, so on wide it takes the graph's place as well as its own.
+  if (mode !== "narrow" && tabbed === "notes") shown = ["notes"];
+  else if (mode === "wide") shown = tabbed === "plan" ? ["script", "plan"] : ["script", "graph", tabbed === "graph" ? "play" : tabbed];
   else if (mode === "medium") shown = ["script", tabbed];
   else shown = [phonePane];
 
@@ -1148,8 +1183,10 @@ function applyLayout() {
   }
   for (const b of document.querySelectorAll("#tabs button")) {
     const t = b.dataset.tab;
-    // On wide, script always shows and graph does unless the board has its place.
-    b.classList.toggle("hide", (mode === "wide" && (t === "script" || (t === "graph" && tabbed !== "plan"))) || (mode === "medium" && t === "script"));
+    // Script always shows, and on wide so does graph, unless the board or notes have their place.
+    const scriptShows = mode !== "narrow" && tabbed !== "notes";
+    const graphShows = mode === "wide" && tabbed !== "plan" && tabbed !== "notes";
+    b.classList.toggle("hide", (t === "script" && scriptShows) || (t === "graph" && graphShows));
     b.classList.toggle("active", shown.includes(t));
   }
   if (shown.includes("graph")) {
@@ -1230,7 +1267,7 @@ function showSyncNote(dirty) {
   } else if (github.token && dirty && age > NOTE_AFTER) {
     const why = navigator.onLine ? "GitHub can't be reached" : "offline";
     showNote(`Not synced for ${minutes(age)} (${why}). Your words are safe on this device, but only here.`, navigator.onLine ? "Try again" : "", syncNow);
-  } else if (!github.token && !noteDismissed && (Object.keys(project.files).length > 1 || project.files[MAIN] !== SAMPLE)) {
+  } else if (!github.token && !noteDismissed && (Object.keys(project.files).length > 1 || project.files[MAIN] !== SAMPLE || Object.keys(project.notes.files).length)) {
     showNote("These words are only on this device. Connect GitHub to keep them safe, and to have earlier versions.", "Connect", openSettings, { dismiss: true });
   } else {
     showNote("");
@@ -1239,8 +1276,12 @@ function showSyncNote(dirty) {
 $("sync-note-close").onclick = () => { noteDismissed = true; showNote(""); };
 setInterval(() => showSyncState(), 30 * 1000); // the note's "for 12 min" stays true
 
+function dirtyIn(store) {
+  return Object.keys(store.files).filter(n => store.files[n] !== store.synced[n]?.text).length + Object.keys(store.deleted).length;
+}
+
 function dirtyCount() {
-  return Object.keys(project.files).filter(n => project.files[n] !== project.synced[n]?.text).length + Object.keys(project.deleted).length;
+  return dirtyIn(project) + dirtyIn(project.notes);
 }
 
 function showSyncState() {
@@ -1284,20 +1325,82 @@ function askConflict(name) {
 
 function copyName(name) {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
-  return name.replace(/\.ink$/, `.mine-${stamp}.ink`);
+  return name.replace(/\.(ink|md)$/, `.mine-${stamp}.$1`);
 }
 
-async function resolveConflict(gh, name, remoteSha, auto) {
+async function resolveConflict(gh, store, name, remoteSha, auto) {
   // Sync by itself doesn't interrupt: it says so, and a Sync pressed by hand asks.
   if (auto) { conflicts.add(name); return; }
   const choice = await askConflict(name);
   if (choice === "mine") {
-    project.synced[name] = { sha: await gh.write(name, project.files[name], remoteSha), text: project.files[name] };
+    store.synced[name] = { sha: await gh.write(name, store.files[name], remoteSha), text: store.files[name] };
   } else if (choice === "theirs") {
-    project.files[copyName(name)] = project.files[name];
+    store.files[copyName(name)] = store.files[name];
     const { text, sha } = await gh.read(name);
-    project.files[name] = text;
-    project.synced[name] = { sha, text };
+    store.files[name] = text;
+    store.synced[name] = { sha, text };
+  }
+}
+
+// One folder against one store: the story's files or the notes.
+async function syncFolder(gh, store, auto) {
+  const remote = await gh.list();
+  // Deleted here. If GitHub's copy has changed since, those words are news: keep them,
+  // so nothing is lost, and the loop below brings the file back.
+  for (const [name, sha] of Object.entries(store.deleted)) {
+    if (remote[name] === sha && store.files[name] === undefined) {
+      try { await gh.remove(name, sha); delete remote[name]; }
+      catch (e) { if (!(e instanceof Conflict)) throw e; }
+    }
+    delete store.deleted[name];
+  }
+  const removedElsewhere = Object.keys(remote).length > 0; // an empty list can mean the folder moved
+  for (const [name, sha] of Object.entries(remote)) {
+    const local = store.files[name];
+    const base = store.synced[name];
+    if (local === undefined) {
+      const f = await gh.read(name);
+      if (store.files[name] !== undefined) continue;
+      store.files[name] = f.text;
+      store.synced[name] = { sha: f.sha, text: f.text };
+    } else if (base?.sha === sha) {
+      if (local !== base.text) {
+        try { store.synced[name] = { sha: await gh.write(name, local, sha), text: local }; }
+        catch (e) {
+          if (!(e instanceof Conflict)) throw e;
+          const fresh = await gh.list();
+          await resolveConflict(gh, store, name, fresh[name], auto);
+        }
+      }
+    } else if (!base || local === base.text) {
+      // First sync on this device, or nothing changed here: GitHub's is the one,
+      // unless this device has never seen the file and holds different words.
+      const f = await gh.read(name);
+      if (store.files[name] !== local) continue;
+      if (!base && local !== f.text && !(name === MAIN && local === SAMPLE)) {
+        await resolveConflict(gh, store, name, sha, auto);
+      } else {
+        store.files[name] = f.text;
+        store.synced[name] = { sha: f.sha, text: f.text };
+      }
+    } else {
+      const f = await gh.read(name);
+      if (store.files[name] !== local) continue;
+      if (f.text === local) store.synced[name] = { sha: f.sha, text: f.text };
+      else await resolveConflict(gh, store, name, sha, auto);
+    }
+  }
+  for (const name of Object.keys(store.files)) {
+    if (remote[name] !== undefined) continue;
+    const text = store.files[name];
+    // Synced before and gone now: another device deleted it. Unless this device has
+    // changed it since, in which case those words go back up.
+    if (removedElsewhere && name !== MAIN && store.synced[name]?.text === text) {
+      delete store.files[name];
+      delete store.synced[name];
+      continue;
+    }
+    store.synced[name] = { sha: await gh.write(name, text, null), text };
   }
 }
 
@@ -1318,68 +1421,19 @@ async function sync({ auto = false } = {}) {
   try {
     // What's known about the last sync says nothing about a different place.
     const place = `${github.repo}/${github.branch}/${github.dir}`;
-    if (project.syncedFrom && project.syncedFrom !== place) { project.synced = {}; project.deleted = {}; }
+    if (project.syncedFrom && project.syncedFrom !== place) {
+      project.synced = {};
+      project.deleted = {};
+      project.notes.synced = {};
+      project.notes.deleted = {};
+    }
     project.syncedFrom = place;
 
-    const remote = await gh.list();
-    // Deleted here. If GitHub's copy has changed since, those words are news: keep them,
-    // so nothing is lost, and the loop below brings the file back.
-    for (const [name, sha] of Object.entries(project.deleted)) {
-      if (remote[name] === sha && project.files[name] === undefined) {
-        try { await gh.remove(name, sha); delete remote[name]; }
-        catch (e) { if (!(e instanceof Conflict)) throw e; }
-      }
-      delete project.deleted[name];
-    }
-    const removedElsewhere = Object.keys(remote).length > 0; // an empty list can mean the folder moved
-    for (const [name, sha] of Object.entries(remote)) {
-      const local = project.files[name];
-      const base = project.synced[name];
-      if (local === undefined) {
-        const f = await gh.read(name);
-        if (project.files[name] !== undefined) continue;
-        project.files[name] = f.text;
-        project.synced[name] = { sha: f.sha, text: f.text };
-      } else if (base?.sha === sha) {
-        if (local !== base.text) {
-          try { project.synced[name] = { sha: await gh.write(name, local, sha), text: local }; }
-          catch (e) {
-            if (!(e instanceof Conflict)) throw e;
-            const fresh = await gh.list();
-            await resolveConflict(gh, name, fresh[name], auto);
-          }
-        }
-      } else if (!base || local === base.text) {
-        // First sync on this device, or nothing changed here: GitHub's is the one,
-        // unless this device has never seen the file and holds different words.
-        const f = await gh.read(name);
-        if (project.files[name] !== local) continue;
-        if (!base && local !== f.text && !(name === MAIN && local === SAMPLE)) {
-          await resolveConflict(gh, name, sha, auto);
-        } else {
-          project.files[name] = f.text;
-          project.synced[name] = { sha: f.sha, text: f.text };
-        }
-      } else {
-        const f = await gh.read(name);
-        if (project.files[name] !== local) continue;
-        if (f.text === local) project.synced[name] = { sha: f.sha, text: f.text };
-        else await resolveConflict(gh, name, sha, auto);
-      }
-    }
-    for (const name of Object.keys(project.files)) {
-      if (remote[name] !== undefined) continue;
-      const text = project.files[name];
-      // Synced before and gone now: another device deleted it. Unless this device has
-      // changed it since, in which case those words go back up.
-      if (removedElsewhere && name !== MAIN && project.synced[name]?.text === text) {
-        delete project.files[name];
-        delete project.synced[name];
-        continue;
-      }
-      project.synced[name] = { sha: await gh.write(name, text, null), text };
-    }
+    await syncFolder(gh, project, auto);
+    const folder = github.dir.replace(/\/+$/, "");
+    await syncFolder(new GitHub({ ...github, dir: `${folder}/notes`, extension: ".md" }), project.notes, auto);
     syncEditors();
+    notes.refresh();
     compile();
   } catch (e) {
     syncError = e.message;
@@ -1619,6 +1673,7 @@ $("history-restore").onclick = () => {
 /* ---------- Begin ---------- */
 
 showFile(project.current);
+notes.refresh();
 applyLayout();
 compile();
 applyLayout();

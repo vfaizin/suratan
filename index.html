@@ -69,6 +69,28 @@
     <div id="graph-card" class="card" hidden></div>
   </section>
 
+  <section class="pane" data-pane="notes" aria-label="Notes">
+    <div class="bar notes-bar">
+      <select id="note-select" aria-label="Page"></select>
+      <span class="grow"></span>
+      <button id="note-delete" class="quiet danger">Delete</button>
+      <button id="note-add">+ Page</button>
+    </div>
+    <div class="notes-body">
+      <nav id="note-list" class="note-list" aria-label="Pages"></nav>
+      <div id="note-empty" class="note-empty" hidden>
+        <p>A place to think, apart from the story. Nothing here is compiled or checked, and it syncs like everything else.</p>
+        <p class="muted">Start with a question, or use + Page for your own:</p>
+        <div id="note-starters" class="row wrap"></div>
+      </div>
+      <div id="note-page" class="note-page">
+        <input id="note-title" class="note-title" aria-label="The page's title" autocomplete="off">
+        <p id="note-message" class="note-message message bad" role="status"></p>
+        <div id="note-editors" class="note-editors"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="pane" data-pane="plan" aria-label="Plan">
     <div class="bar plan-bar">
       <div id="plan-days" class="plan-days" aria-label="Days"></div>
@@ -116,6 +138,7 @@
 <nav id="tabs" class="tabs" aria-label="Panes">
   <button data-tab="script">Script</button>
   <button data-tab="graph">Graph</button>
+  <button data-tab="notes">Notes</button>
   <button data-tab="plan">Plan</button>
   <button data-tab="play">Play</button>
   <button data-tab="check">Check</button>

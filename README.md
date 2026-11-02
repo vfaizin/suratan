@@ -17,9 +17,10 @@ api.github.com.
 - `parse.js`: a light scan of the source for scenes, jumps and variables
 - `graph.js`: draws the scan; pan, pinch, find, focus on a scene, and drag one (its place stays on this device, not in the story)
 - `plan.js`: the Plan tab: reads and writes `plan.ink` and draws one day's board, places down and hours across
+- `notes.js`: the Notes tab: pages of plain thinking, one Markdown file each, in `notes/` inside the story's folder
 - `check-worker.js`: the bot, in a worker so a looping story can't freeze the page
 - `ink-guard.js`: makes dividing by zero an Ink error, here and in the bot
-- `github.js`: reads and writes the story's folder through GitHub's API, and a file's earlier versions
+- `github.js`: reads and writes one folder of the story's repository through GitHub's API, and a file's earlier versions
 - `sw.js`: keeps the tool working offline
 - `vendor/ink-full.js`: [inkjs](https://github.com/y-lohse/inkjs) 2.4.0, the Ink compiler and runtime (MIT). One change from the published file: `WriteFloat` writes a whole-number decimal as `"7.0f"` and the reader takes a minus sign on it, so `7.0` stays a decimal through the JSON Suratan runs from, instead of becoming the whole number `7`, which divides differently
 

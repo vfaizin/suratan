@@ -1,4 +1,5 @@
-// The GitHub contents API: the story's .ink files in one folder of one branch.
+// The GitHub contents API: the files of one kind (.ink for the story, .md for the notes)
+// in one folder of one branch.
 // The token goes only to api.github.com, from this device.
 
 const API = "https://api.github.com";
@@ -17,8 +18,8 @@ function decode(b64) {
 export class Conflict extends Error {}
 
 export class GitHub {
-  constructor({ repo, branch, dir, token }) {
-    Object.assign(this, { repo, branch, dir: dir.replace(/^\/+|\/+$/g, ""), token });
+  constructor({ repo, branch, dir, token, extension = ".ink" }) {
+    Object.assign(this, { repo, branch, dir: dir.replace(/^\/+|\/+$/g, ""), token, extension });
   }
 
   call(path, options) { return this.api(`contents/${path}`, options); }
@@ -45,7 +46,7 @@ export class GitHub {
     return res;
   }
 
-  // Name -> sha for the folder's .ink files. An absent folder is an empty one.
+  // Name -> sha for the folder's files of this kind. An absent folder is an empty one.
   async list() {
     const res = await this.call(`${this.dir}?ref=${encodeURIComponent(this.branch)}`);
     if (res.status === 404) {
@@ -55,7 +56,7 @@ export class GitHub {
     if (!res.ok) throw new Error(`GitHub answered ${res.status}.`);
     const out = {};
     for (const f of await res.json()) {
-      if (f.type === "file" && f.name.endsWith(".ink")) out[f.name] = f.sha;
+      if (f.type === "file" && f.name.endsWith(this.extension)) out[f.name] = f.sha;
     }
     return out;
   }

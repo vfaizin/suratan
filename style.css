@@ -129,7 +129,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--surface);
 }
-.tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; min-height: 44px; color: var(--muted); }
+.tabs button { flex: 1; min-width: 0; padding: 4px 2px; border: 0; border-radius: 0; background: transparent; min-height: 44px; color: var(--muted); }
 .tabs button.active { color: var(--accent); font-weight: 600; box-shadow: inset 0 2px 0 var(--accent); }
 .tabs button.hide { display: none; }
 
@@ -241,6 +241,26 @@ button.danger { color: var(--bad); }
 .card ul { margin: 6px 0; padding-left: 18px; font-size: 13px; }
 .card .row { margin-top: 8px; }
 
+/* Notes: a column of words, with the pages beside it when there's room. */
+.notes-bar { flex-wrap: nowrap; }
+.notes-bar > button { flex: none; font-size: 13px; }
+#note-select { flex: 0 1 auto; min-width: 0; max-width: 60%; font-size: 16px; }
+.notes-body { flex: 1 1 auto; min-height: 0; display: flex; background: var(--surface); }
+.note-list { flex: 0 0 200px; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; background: var(--paper); border-right: 1px solid var(--line); }
+.note-list button { flex: none; text-align: left; border: 0; background: transparent; font-size: 14px; overflow-wrap: anywhere; }
+.note-list button.active { background: var(--accent-soft); font-weight: 600; }
+.note-empty { flex: 1 1 auto; min-width: 0; padding: 24px 16px; overflow: auto; }
+.note-empty p { max-width: 34em; margin: 0 0 12px; }
+.note-page { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; --gutter: max(16px, calc((100% - 640px) / 2)); }
+.note-title { flex: none; width: 100%; min-height: 0; border: 0; border-radius: 0; background: transparent; padding: 18px var(--gutter) 4px; font: 600 22px/1.3 var(--serif); }
+.note-title:focus-visible { outline: 0; }
+.note-message { flex: none; margin: 0; padding: 0 var(--gutter); min-height: 0; font-size: 13px; }
+.note-message:empty { display: none; }
+.note-editors { position: relative; flex: 1 1 auto; min-height: 0; }
+.note-text { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; resize: none; outline: 0; background: transparent; color: var(--text); padding: 8px var(--gutter) 40px; font: 17px/1.6 var(--serif); }
+.note-text.off { visibility: hidden; }
+.note-text::placeholder { color: var(--muted); }
+
 /* The plan: sticky hours along the top, sticky places down the side. */
 .pane[data-pane=plan] { flex: 1.8 1 0; }
 .plan-days { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
@@ -346,6 +366,13 @@ dialog label input { display: block; width: 100%; font-size: 16px; color: var(--
 @media (max-width: 640px) {
   .history-body { flex-direction: column; }
   .history-list { flex: 0 0 auto; max-height: 26%; }
+}
+
+@media (max-width: 719px) {
+  .note-list { display: none; }
+}
+@media (min-width: 720px) {
+  #note-select { display: none; }
 }
 
 @media (max-width: 480px) {
